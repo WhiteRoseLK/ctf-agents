@@ -61,6 +61,27 @@ Bascule : `/ctf-mode training|competition`. Lecture : `MODE=$(cat .ctf-mode 2>/d
 4. **Soumission** → l'orchestrateur lance `/ctf-submit <challenge> <flag>` (archive + soumet + sauve le solveur dans `challenges/<nom>/solution/`)
 5. **Writeup** (⚙ training : auto · competition : différé) → sous-agent `writeup` → **export** du writeup + record vers `<DEST>` (repo CTF privé = vault Obsidian), jamais dans ce repo. Inclut **méthodo + tips + erreurs à éviter**, pas que la solution.
 6. **Review** (⚙ training uniquement) → `/ctf-retro <challenge>` → sous-agent `review` en mode approfondi (KB/rétro **+ post-mortem process/cadre**). En compétition : sautée.
+7. **Fin de cycle & cleanup** → voir ci-dessous.
+
+## Fin de cycle & cleanup
+
+Les workers sont lancés **sans `--keep-open`** : un worker se **ferme tout seul** après son
+`worker_done` (le chat reste ouvert pendant le travail pour que l'utilisateur puisse aider).
+Une fois le challenge **complètement terminé**, l'orchestrateur nettoie dans cet ordre :
+
+```bash
+docker rm -f exegol-ctf-<nom>                          # conteneur Exegol du challenge
+orca worktree rm --worktree name:ctf-<nom> --force     # ferme le worker + supprime le worktree
+```
+
+**Quand nettoyer, selon le mode :**
+- **`training`** : après writeup **et** review — le record est déjà exporté dans le repo privé, donc
+  supprimer le worktree ne perd rien.
+- **`competition`** : le writeup est **différé** → le record (`challenges/<nom>/solution/`, logs) vit
+  dans le worktree. **Ne pas `orca worktree rm` tant que le writeup différé n'est pas fait**, ou
+  d'abord **archiver** `challenges/<nom>/` hors du worktree. Sinon on perd le record.
+
+> ⚠ Jamais de `orca worktree rm` d'un challenge dont le record n'est ni exporté ni archivé.
 
 ## Conventions obligatoires
 
