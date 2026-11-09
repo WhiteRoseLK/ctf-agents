@@ -16,13 +16,17 @@ Exemple : `/ctf-start rootme "SQL Injection - Authentication" https://challenge.
    ```bash
    orca orchestration worker-start \
      --worktree new-top-level --repo id:<repoId> --name "ctf-<nom>" \
-     --agent claude --keep-open \
+     --agent claude \
      --spec "<brief self-contained : plateforme, nom, cible, objectif = flag, livrable>" --json
    ```
-   `--keep-open` laisse le chat du worker ouvert pour que l'utilisateur puisse y entrer.
+   **Par défaut (sans `--keep-open`), le worker se ferme tout seul après `worker_done`.** Le chat
+   reste ouvert **pendant** le travail (l'utilisateur peut y entrer pour aider). Ajouter
+   `--keep-open` **uniquement** si l'utilisateur veut garder le chat ouvert après la fin.
 4. **Rester disponible** : plusieurs challenges = plusieurs `worker-start` en parallèle. Diriger
    chaque worker par `orca orchestration send --to dispatch:<id>` ; être réveillé par `worker_done`.
 5. Ne **pas** créer de conteneur Exegol ni de structure ici : c'est le worker qui le fait.
+6. **Fin de cycle** : après la soumission (et, en `training`, writeup + review), l'orchestrateur
+   **nettoie** le challenge — cf. CLAUDE.md § « Fin de cycle & cleanup ».
 
 ## Brief du worker (ce que le worker exécute dans son worktree)
 
