@@ -1,10 +1,30 @@
-Initialise un nouveau challenge CTF.
+Initialise un nouveau challenge CTF en démarrant son **worker Orca dédié**.
 
 Arguments attendus : `<plateforme> <nom-du-challenge> [cible]`
 Exemple : `/ctf-start htb Keeper 10.10.11.227`
 Exemple : `/ctf-start rootme "SQL Injection - Authentication" https://challenge.root-me.org/...`
 
-## Actions à réaliser
+> Modèle : **1 challenge = 1 worker Orca = 1 worktree** (cf. ADR `docs/adr/0001`). L'orchestrateur
+> global **démarre le worker et le dirige par le bus Orca** ; toute la résolution (structure,
+> download, Exegol, recon, exploit) se fait **dans le worktree du worker**.
+
+## Côté orchestrateur global
+
+1. **Déterminer** plateforme, nom, cible, et (CTF ponctuel) événement + année.
+2. **Récupérer le repoId** : `orca repo list --json` (ce repo = `claude_ctf`).
+3. **Démarrer le worker** du challenge, avec le brief ci-dessous comme `--spec` :
+   ```bash
+   orca orchestration worker-start \
+     --worktree new-top-level --repo id:<repoId> --name "ctf-<nom>" \
+     --agent claude --keep-open \
+     --spec "<brief self-contained : plateforme, nom, cible, objectif = flag, livrable>" --json
+   ```
+   `--keep-open` laisse le chat du worker ouvert pour que l'utilisateur puisse y entrer.
+4. **Rester disponible** : plusieurs challenges = plusieurs `worker-start` en parallèle. Diriger
+   chaque worker par `orca orchestration send --to dispatch:<id>` ; être réveillé par `worker_done`.
+5. Ne **pas** créer de conteneur Exegol ni de structure ici : c'est le worker qui le fait.
+
+## Brief du worker (ce que le worker exécute dans son worktree)
 
 1. **Créer la structure du challenge en local** (gitignoré, aucun autre repo touché) :
    ```
@@ -17,21 +37,15 @@ Exemple : `/ctf-start rootme "SQL Injection - Authentication" https://challenge.
    └── work/            # fichiers du challenge (monté sur /workspace dans Exegol)
    ```
 
-2. **Initialiser notes.md** avec les infos de base :
-   - Plateforme
-   - Nom du challenge
-   - Cible (IP/URL)
-   - Date de début
-   - Catégorie si connue
-   - Pour un CTF ponctuel : nom de l'événement et année (servira à l'export du writeup)
+2. **Initialiser notes.md** : plateforme, nom, cible, date de début, catégorie si connue ;
+   pour un CTF ponctuel, événement + année (servira à l'export du writeup).
 
 3. **Consulter la knowledge base par pertinence** :
    ```bash
    python3 tools/kb-search/kb_search.py "<nom-du-challenge> <catégorie si connue> <mots-clés>"
    ```
-   Cela remonte les techniques, leçons et rétros les plus proches (mémoire du repo).
-   Compléter si besoin par une lecture directe de `knowledge-base/techniques.md` et
-   `lessons-learned.md`. Résumer les points pertinents dans notes.md.
+   Remonte techniques, leçons et rétros les plus proches. Compléter si besoin par
+   `knowledge-base/techniques.md` et `lessons-learned.md`. Résumer dans notes.md.
 
 4. **Télécharger les fichiers du challenge dans `work/`** (si le challenge en a) :
    ```bash
@@ -40,7 +54,10 @@ Exemple : `/ctf-start rootme "SQL Injection - Authentication" https://challenge.
    **Bug connu HTB** : le CLI renvoie souvent `"files": []` (HTTP 400). Contournement direct :
    ```bash
    TOKEN=$(python3 -c "import json;print(json.load(open('$HOME/.claude/ctf/config.json'))['active']['token'])")
-   curl -sL -H "Authorization: Bearer $TOKEN" -H "User-Agent: Mozilla/5.0" \
+   # Token passé par substitution de process (-K <(...)), JAMAIS en argv (sinon lisible par `ps aux`).
+   # Ne jamais logger cette commande après expansion dans exploit-log.md : logger `$TOKEN` littéral.
+   curl -sL -A "Mozilla/5.0" \
+     -K <(printf 'header = "Authorization: Bearer %s"\n' "$TOKEN") \
      -o challenges/<nom>/work/challenge.zip \
      "https://labs.hackthebox.com/api/v4/challenge/download/<ID>"
    ```
@@ -64,7 +81,6 @@ Exemple : `/ctf-start rootme "SQL Injection - Authentication" https://challenge.
 
 6. **Pas de commit** : `challenges/` est gitignoré (repo public).
 
-7. **Proposer le plan d'attaque** :
-   - Recon → Exploit en séquence (recon charge `solve-challenge`, exploit le skill catégorie)
-   - Challenge réseau → envisager Agent Teams (recon + exploit en parallèle)
-   - Demander confirmation avant de lancer les agents
+7. **Résoudre** : phase Recon (sous-agent `recon` → `solve-challenge`) puis Exploit (sous-agent
+   `exploit` → skill `ctf-<catégorie>`). Rapporter le flag à l'orchestrateur par `worker_done`
+   (questions/blocages → `orca orchestration ask`).

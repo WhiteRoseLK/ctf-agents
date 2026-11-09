@@ -70,8 +70,9 @@ En **compétition**, il s'arrête à la soumission (writeup différé, review sa
 le record committé reste complet et régénérable.
 
 1. `/ctf-connect <plateforme> <token>` — se connecter (puis `/ctf-list`, `/ctf-solve` au besoin).
-2. `/ctf-start <plateforme> <challenge> [cible]` — structure le challenge, consulte la mémoire,
-   démarre le conteneur Exegol.
+2. `/ctf-start <plateforme> <challenge> [cible]` — démarre le **worker Orca** du challenge
+   (worktree dédié + conteneur Exegol, via `ocx claude`) ; le worker structure le challenge,
+   consulte la mémoire, puis résout.
 3. **Recon** — l'agent `recon` charge `solve-challenge`, triage, produit `recon-report.md`
    (avec la catégorie détectée). Aucune exploitation.
 4. **Exploit** — l'agent `exploit` charge le skill `ctf-<catégorie>`, attaque, logge tout dans
@@ -80,8 +81,10 @@ le record committé reste complet et régénérable.
 6. **Selon le mode** — training : **Writeup** (agent `writeup` → export vers le repo CTF privé, avec méthodo/tips/erreurs) +
    `/ctf-retro` (agent `review` approfondi → KB + post-mortem) ; competition : différés.
 
-> Pour un challenge réseau, `/ctf-start` peut proposer des **Agent Teams** (recon + exploit en
-> parallèle) — activées via `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` dans `.claude/settings.json`.
+> **Plusieurs challenges en parallèle** : l'orchestrateur global démarre un worker Orca par
+> challenge (`orca orchestration worker-start`), chacun dans son worktree + Exegol, et les dirige
+> par le bus Orca. L'utilisateur peut entrer dans le chat d'un worker pour aider. Cf. ADR
+> `docs/adr/0001`.
 
 ## Structure
 
