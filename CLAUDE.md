@@ -67,12 +67,20 @@ Bascule : `/ctf-mode training|competition`. Lecture : `MODE=$(cat .ctf-mode 2>/d
 
 Les workers sont lancés **sans `--keep-open`** : un worker se **ferme tout seul** après son
 `worker_done` (le chat reste ouvert pendant le travail pour que l'utilisateur puisse aider).
-Une fois le challenge **complètement terminé**, l'orchestrateur nettoie dans cet ordre :
+Une fois le challenge **complètement terminé**, l'orchestrateur nettoie :
 
 ```bash
-docker rm -f exegol-ctf-<nom>                          # conteneur Exegol du challenge
-orca worktree rm --worktree name:ctf-<nom> --force     # ferme le worker + supprime le worktree
+# <nom> = slug du challenge, STRICTEMENT [A-Za-z0-9_-] — à valider avant interpolation (frontière
+# de confiance : le nom vient de la plateforme/utilisateur). Rejeter tout autre caractère ou un `-` initial.
+WT=~/orca/workspaces/claude_ctf/ctf-<nom>              # worktree du worker
+bash "$WT/challenges/<nom>/cleanup.sh"                 # docker rm -f exegol-ctf-<nom> + rm -rf work/
+orca worktree rm --worktree name:ctf-<nom> --force    # ferme le worker + supprime le worktree
 ```
+
+**Étape de vérification OBLIGATOIRE avant tout `orca worktree rm`** (suppression irréversible) :
+prouver que le record est sauvé — en `training`, le commit writeup est présent dans le repo privé ;
+en `competition`, `challenges/<nom>/` a été archivé hors du worktree. **Sans cette preuve lue au
+préalable, ne rien supprimer.**
 
 **Quand nettoyer, selon le mode :**
 - **`training`** : après writeup **et** review — le record est déjà exporté dans le repo privé, donc

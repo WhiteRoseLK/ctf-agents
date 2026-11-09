@@ -26,8 +26,9 @@ Architecture à **3 niveaux**, un point d'entrée unique :
    Il dirige chaque worker par `orca orchestration send --to dispatch:<id>` et est réveillé par
    leurs `worker_done`. Il ne résout jamais lui-même.
 2. **Worker Orca** (1 par challenge) — session Claude dans son propre worktree + conteneur Exegol
-   dédié. **Ouvrable directement par l'utilisateur** (chat du worker, `--keep-open`). Il mène la
-   résolution et délègue en interne à ses sous-agents.
+   dédié. **Ouvrable directement par l'utilisateur** : son chat est ouvert pendant le travail ; le
+   worker se ferme tout seul après `worker_done` (auto-close — cf. #15 ; `--keep-open` en option
+   pour garder le chat après la fin). Il mène la résolution et délègue en interne à ses sous-agents.
 3. **Sous-agents** `recon` / `exploit` (+ `writeup` / `review`) — inchangés, internes au worker.
 
 Deux choix techniques actés :
