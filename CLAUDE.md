@@ -26,12 +26,18 @@ une technique de skill dans un agent ou dans la knowledge base.
 
 ## Rôle de l'agent principal — ORCHESTRATEUR (il ne résout pas)
 
-L'agent principal **orchestre, il ne résout jamais lui-même**. Il écoute l'utilisateur et délègue :
+L'agent principal **orchestre, il ne résout jamais lui-même**. Il écoute l'utilisateur et délègue
+via le skill **`orchestration`** d'Orca (cf. ADR `docs/adr/0001`) :
 
-- Il **lance les sous-agents** `recon` puis `exploit` (spécialisés par catégorie via le skill
-  `ctf-<catégorie>`) sur chaque challenge, chacun travaillant dans le **conteneur Exegol du challenge**.
-- **Plusieurs challenges = plusieurs sous-agents en parallèle.** L'orchestrateur supervise et
-  **reste disponible** pour de nouvelles instructions de l'utilisateur (lancer d'autres agents, autre chose).
+- Il **démarre un worker Orca par challenge** (`orca orchestration worker-start --worktree
+  new-top-level --agent claude`), dans son propre worktree + conteneur Exegol, lancé via
+  **`ocx claude`** (routage multi-provider). Le worker mène la résolution et délègue en interne à
+  ses sous-agents `recon` puis `exploit` (spécialisés par catégorie via `ctf-<catégorie>`).
+- **Il dirige chaque worker par le bus Orca** : `orca orchestration send --to dispatch:<id>` (jamais
+  le `SendMessage` de Claude, jamais le terminal du worker). Il est réveillé par leurs `worker_done`.
+- **Plusieurs challenges = plusieurs workers Orca en parallèle.** L'orchestrateur supervise et
+  **reste disponible** pour de nouvelles instructions de l'utilisateur. L'utilisateur peut entrer
+  dans le chat d'un worker (`--keep-open`) pour aider sans casser l'orchestration.
 - Il ne lance **JAMAIS** lui-même une commande de recon/exploitation (pas de `docker exec` d'outils,
   pas de solveur inline, pas d'analyse de binaire). Si l'envie de « juste résoudre » surgit : **déléguer**.
 - Il ne garde en propre que : l'init (`/ctf-start`), la **soumission** (`/ctf-submit`), et le
@@ -49,9 +55,9 @@ Bascule : `/ctf-mode training|competition`. Lecture : `MODE=$(cat .ctf-mode 2>/d
 
 ## Workflow standard (tout est délégué par l'orchestrateur)
 
-1. **Init** → l'orchestrateur lance `/ctf-start <plateforme> <challenge>` (structure, mémoire, conteneur Exegol)
-2. **Phase Recon** → l'orchestrateur **délègue au sous-agent `recon`** : charge `solve-challenge`, triage, produit `recon-report.md` avec la **catégorie détectée**
-3. **Phase Exploit** → l'orchestrateur **délègue au sous-agent `exploit`** : charge le skill `ctf-<catégorie>`, attaque dans le conteneur Exegol, produit `exploit-log.md` + `flag.txt` + solveur dans `challenges/<nom>/solution/`
+1. **Init** → l'orchestrateur lance `/ctf-start <plateforme> <challenge>` : démarre le **worker Orca** du challenge (`worker-start`, worktree + conteneur Exegol via `ocx claude`) et lui passe le brief
+2. **Phase Recon** → **dans le worker**, délégation au sous-agent `recon` : charge `solve-challenge`, triage, produit `recon-report.md` avec la **catégorie détectée**
+3. **Phase Exploit** → **dans le worker**, délégation au sous-agent `exploit` : charge le skill `ctf-<catégorie>`, attaque dans le conteneur Exegol, produit `exploit-log.md` + `flag.txt` + solveur dans `challenges/<nom>/solution/`
 4. **Soumission** → l'orchestrateur lance `/ctf-submit <challenge> <flag>` (archive + soumet + sauve le solveur dans `challenges/<nom>/solution/`)
 5. **Writeup** (⚙ training : auto · competition : différé) → sous-agent `writeup` → **export** du writeup + record vers `<DEST>` (repo CTF privé = vault Obsidian), jamais dans ce repo. Inclut **méthodo + tips + erreurs à éviter**, pas que la solution.
 6. **Review** (⚙ training uniquement) → `/ctf-retro <challenge>` → sous-agent `review` en mode approfondi (KB/rétro **+ post-mortem process/cadre**). En compétition : sautée.
@@ -117,6 +123,11 @@ dans le repo CTF, faits par l'orchestrateur (étape writeup de `/ctf-submit`).
 **Les sous-agents recon/exploit pilotent depuis l'hôte macOS ; les outils CTF tournent dans
 un conteneur Exegol dédié au challenge** (c'est là que vivent nmap, pwntools, ghidra, binwalk, john…).
 L'hôte macOS n'a pas ces outils → ne pas lancer les commandes d'attaque directement dessus.
+
+> **Un challenge = un worker Orca = un worktree.** Le conteneur Exegol et le dossier
+> `challenges/<nom>/` d'un challenge vivent dans le **worktree du worker** (`orca orchestration
+> worker-start`, cf. ADR `docs/adr/0001`), pas dans le worktree principal. L'orchestrateur global
+> ne crée ni conteneur ni solveur : il démarre le worker et le dirige par `orchestration send`.
 
 > **Politique (hook `PreToolUse`, liste noire — autorise par défaut)** : l'orchestration et
 > l'inspection (git, grep, find, sed, awk, cat, docker, exegol, outils du repo…) passent **sans
