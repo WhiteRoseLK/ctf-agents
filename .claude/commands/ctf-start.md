@@ -54,7 +54,10 @@ Exemple : `/ctf-start rootme "SQL Injection - Authentication" https://challenge.
    **Bug connu HTB** : le CLI renvoie souvent `"files": []` (HTTP 400). Contournement direct :
    ```bash
    TOKEN=$(python3 -c "import json;print(json.load(open('$HOME/.claude/ctf/config.json'))['active']['token'])")
-   curl -sL -H "Authorization: Bearer $TOKEN" -H "User-Agent: Mozilla/5.0" \
+   # Token passé par substitution de process (-K <(...)), JAMAIS en argv (sinon lisible par `ps aux`).
+   # Ne jamais logger cette commande après expansion dans exploit-log.md : logger `$TOKEN` littéral.
+   curl -sL -A "Mozilla/5.0" \
+     -K <(printf 'header = "Authorization: Bearer %s"\n' "$TOKEN") \
      -o challenges/<nom>/work/challenge.zip \
      "https://labs.hackthebox.com/api/v4/challenge/download/<ID>"
    ```

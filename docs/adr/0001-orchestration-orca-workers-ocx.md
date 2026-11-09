@@ -54,7 +54,7 @@ Deux choix techniques actés :
 **Négatives / coûts**
 - Dépendance à Orca (app desktop) et à ocx (proxy) pour le cycle complet.
 - La commande d'agent `ocx claude` est un **réglage GUI d'Orca** (pas de flag CLI) → étape humaine,
-  couverte par `tools/orca-ocx-setup.sh`.
+  couverte par `tools/orca-ocx-setup/orca-ocx-setup.sh`.
 
 ## Alternatives écartées
 
