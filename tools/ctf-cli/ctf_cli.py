@@ -254,6 +254,53 @@ def htb_submit(token, challenge_id, flag, difficulty=50):
     return resp
 
 
+# ─── HTB machines (boxes) ────────────────────────────────────────────────
+
+def _htb_token_call(token, path, method="GET", data=None):
+    return api_request(f"{HTB_API}/{path}", method=method, data=data, token=token, platform="htb")
+
+
+def htb_machines_list(token, os_name=None, difficulty=None, solved=None, retired=False):
+    """List boxes (active or retired), following API pagination.
+
+    `solved` refers to root ownership.
+    """
+    path = "machine/list/retired/paginated" if retired else "machine/paginated"
+    url = f"{HTB_API}/{path}?per_page=100"
+    machines = []
+    while url:
+        resp = api_request(url, token=token, platform="htb")
+        machines.extend(resp.get("data", []))
+        url = (resp.get("links") or {}).get("next")
+
+    if os_name:
+        machines = [m for m in machines if (m.get("os") or "").lower() == os_name.lower()]
+    if difficulty:
+        machines = [m for m in machines if (m.get("difficultyText") or "").lower() == difficulty.lower()]
+    if solved is not None:
+        machines = [m for m in machines if bool(m.get("authUserInRootOwns")) == solved]
+    return machines
+
+
+def htb_machine_info(token, name):
+    resp = _htb_token_call(token, f"machine/profile/{urllib.parse.quote(name, safe='')}")
+    return resp.get("info", resp)
+
+
+def htb_machine_spawn(token, machine_id):
+    return _htb_token_call(token, "vm/spawn", method="POST", data={"machine_id": int(machine_id)})
+
+
+def htb_machine_active(token):
+    """Return the running box (with its IP), or None."""
+    return _htb_token_call(token, "machine/active").get("info")
+
+
+def htb_machine_submit(token, machine_id, flag, difficulty=50):
+    data = {"id": int(machine_id), "flag": flag, "difficulty": difficulty}
+    return _htb_token_call(token, "machine/own", method="POST", data=data)
+
+
 # ─── RootMe ──────────────────────────────────────────────────────────────
 
 ROOTME_API = "https://api.www.root-me.org"
@@ -524,6 +571,47 @@ def cmd_status(args):
         print(json.dumps({"connected": True, **safe_profile}))
 
 
+def _htb_profile():
+    profile = load_config().get("active")
+    if not profile or profile.get("platform") != "htb":
+        print("Not connected to HTB. Run: ctf connect --platform htb first", file=sys.stderr)
+        sys.exit(1)
+    return profile
+
+
+def cmd_machines(args):
+    token = _htb_profile()["token"]
+    action = args.action
+
+    if action == "list":
+        solved = {"true": True, "false": False}.get(args.solved)
+        machines = htb_machines_list(token, os_name=args.os, difficulty=args.difficulty,
+                                     solved=solved, retired=args.retired)
+        result = [
+            {
+                "id": m.get("id"),
+                "name": m.get("name"),
+                "os": m.get("os"),
+                "difficulty": m.get("difficultyText"),
+                "points": m.get("points"),
+                "user_owned": bool(m.get("authUserInUserOwns")),
+                "root_owned": bool(m.get("authUserInRootOwns")),
+                "release": m.get("release"),
+            }
+            for m in machines
+        ]
+    elif action == "info":
+        result = htb_machine_info(token, args.name)
+    elif action == "spawn":
+        result = htb_machine_spawn(token, args.id)
+    elif action == "active":
+        result = htb_machine_active(token) or {"active": False}
+    elif action == "submit":
+        result = htb_machine_submit(token, args.id, args.flag)
+
+    print(json.dumps(result, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description="CTF Platform CLI")
     sub = parser.add_subparsers(dest="command")
@@ -554,6 +642,17 @@ def main():
     p_sub.add_argument("--id", required=True, help="Challenge ID")
     p_sub.add_argument("--flag", required=True, help="Flag to submit")
 
+    # machines (HTB boxes)
+    p_mach = sub.add_parser("machines", help="HTB boxes: list, info, spawn, active, submit")
+    p_mach.add_argument("action", choices=["list", "info", "spawn", "active", "submit"])
+    p_mach.add_argument("--os", help="list: filter by OS (Linux, Windows...)")
+    p_mach.add_argument("--difficulty", help="list: filter by difficulty (Easy, Medium, Hard, Insane)")
+    p_mach.add_argument("--solved", choices=["true", "false"], help="list: filter by root ownership")
+    p_mach.add_argument("--retired", action="store_true", help="list: retired boxes instead of active ones")
+    p_mach.add_argument("--name", help="info: box name")
+    p_mach.add_argument("--id", help="spawn/submit: box ID")
+    p_mach.add_argument("--flag", help="submit: user or root flag")
+
     # status
     sub.add_parser("status")
 
@@ -561,6 +660,12 @@ def main():
     if not args.command:
         parser.print_help()
         sys.exit(1)
+    if args.command == "machines":
+        needs = {"info": "name", "spawn": "id", "submit": "id"}.get(args.action)
+        if needs and not getattr(args, needs):
+            parser.error(f"machines {args.action} requires --{needs}")
+        if args.action == "submit" and not args.flag:
+            parser.error("machines submit requires --flag")
 
     {
         "connect": cmd_connect,
@@ -569,6 +674,7 @@ def main():
         "download": cmd_download,
         "submit": cmd_submit,
         "status": cmd_status,
+        "machines": cmd_machines,
     }[args.command](args)
 
 
