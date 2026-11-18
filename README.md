@@ -28,6 +28,21 @@ claude                  # puis, dans Claude Code :  /ctf-connect htb <TOKEN>
 `install.sh` ne touche jamais à un `config.json`/token existant. Options : `--no-deps`, `--yes`, `--opencodex` (installe OpenCodex : app, CLI `ocx`, workers et raccourci zsh ; OAuth manuel via `ocx setup`).
 Les secrets (tokens, config plateforme) ne sont **jamais versionnés** (voir `.gitignore`).
 
+### Boxes HackTheBox
+
+Une fois connecté (`/ctf-connect htb <TOKEN>`), le CLI gère aussi les boxes :
+
+```bash
+python3 ~/.claude/ctf/ctf_cli.py machines list [--os Linux] [--difficulty Easy] [--solved false] [--retired]
+python3 ~/.claude/ctf/ctf_cli.py machines info --name <nom>
+python3 ~/.claude/ctf/ctf_cli.py machines spawn --id <id>
+python3 ~/.claude/ctf/ctf_cli.py machines active          # IP de la box en cours
+python3 ~/.claude/ctf/ctf_cli.py machines submit --id <id> --flag <flag>   # user ou root
+```
+
+`--solved` porte sur le flag root. La cible n'est joignable que par le VPN HTB (`--vpn` d'Exegol).
+Tests : `python3 -m unittest discover -s tools/ctf-cli/tests`.
+
 ### OpenCodex (optionnel, multi-provider)
 
 `./install.sh --opencodex` installe et configure [OpenCodex](https://opencodex.me), un proxy qui
