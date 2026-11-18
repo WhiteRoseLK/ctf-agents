@@ -186,6 +186,7 @@ def ctfd_submit(base_url, token, challenge_id, flag):
 # ─── HTB ─────────────────────────────────────────────────────────────────
 
 HTB_API = "https://labs.hackthebox.com/api/v4"
+HTB_API_V5 = "https://labs.hackthebox.com/api/v5"  # machine/own n'existe qu'en v5
 
 def htb_categories(token):
     """Fetch and cache HTB category id->name mapping."""
@@ -256,8 +257,8 @@ def htb_submit(token, challenge_id, flag, difficulty=50):
 
 # ─── HTB machines (boxes) ────────────────────────────────────────────────
 
-def _htb_token_call(token, path, method="GET", data=None):
-    return api_request(f"{HTB_API}/{path}", method=method, data=data, token=token, platform="htb")
+def _htb_token_call(token, path, method="GET", data=None, base=HTB_API):
+    return api_request(f"{base}/{path}", method=method, data=data, token=token, platform="htb")
 
 
 def htb_machines_list(token, os_name=None, difficulty=None, solved=None, retired=False):
@@ -298,7 +299,8 @@ def htb_machine_active(token):
 
 def htb_machine_submit(token, machine_id, flag, difficulty=50):
     data = {"id": int(machine_id), "flag": flag, "difficulty": difficulty}
-    return _htb_token_call(token, "machine/own", method="POST", data=data)
+    # Une seule route pour user et root : HTB déduit le type de flag soumis.
+    return _htb_token_call(token, "machine/own", method="POST", data=data, base=HTB_API_V5)
 
 
 # ─── RootMe ──────────────────────────────────────────────────────────────

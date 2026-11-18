@@ -47,7 +47,7 @@ class MachinesTest(unittest.TestCase):
         with mock.patch.object(ctf_cli, "api_request", return_value={}) as api:
             ctf_cli.htb_machine_submit("t", "7", "HTB{x}")
         self.assertEqual(api.call_args.kwargs["data"], {"id": 7, "flag": "HTB{x}", "difficulty": 50})
-        self.assertTrue(api.call_args.args[0].endswith("machine/own"))
+        self.assertEqual(api.call_args.args[0], "https://labs.hackthebox.com/api/v5/machine/own")
 
 
 if __name__ == "__main__":
