@@ -24,7 +24,14 @@ class MachinesTest(unittest.TestCase):
         self.assertIn("machine/paginated", api.call_args_list[0].args[0])
 
     def test_list_refuses_untrusted_pagination_host(self):
-        for bad in ("https://evil.example/next", "http://labs.hackthebox.com/next"):
+        for bad in (
+            "https://evil.example/next",
+            "http://labs.hackthebox.com/next",
+            "https://labs.hackthebox.com@evil.example/next",
+            "https://labs.hackthebox.com.evil.example/next",
+            "//evil.example/next",
+            "/api/v4/machine/paginated?page=2",
+        ):
             with mock.patch.object(ctf_cli, "api_request", return_value=page([], nxt=bad)) as api:
                 with self.assertRaises(ValueError):
                     ctf_cli.htb_machines_list("t")
