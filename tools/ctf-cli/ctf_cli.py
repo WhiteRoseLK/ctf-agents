@@ -261,6 +261,15 @@ def _htb_token_call(token, path, method="GET", data=None, base=HTB_API):
     return api_request(f"{base}/{path}", method=method, data=data, token=token, platform="htb")
 
 
+def _htb_trusted_url(url):
+    """Refuse de suivre une URL de pagination hors HTB : le token y serait envoyé."""
+    if url:
+        parts = urllib.parse.urlparse(url)
+        if parts.scheme != "https" or parts.hostname != urllib.parse.urlparse(HTB_API).hostname:
+            raise ValueError(f"Untrusted pagination URL refused: {url}")
+    return url
+
+
 def htb_machines_list(token, os_name=None, difficulty=None, solved=None, retired=False):
     """List boxes (active or retired), following API pagination.
 
@@ -272,7 +281,7 @@ def htb_machines_list(token, os_name=None, difficulty=None, solved=None, retired
     while url:
         resp = api_request(url, token=token, platform="htb")
         machines.extend(resp.get("data", []))
-        url = (resp.get("links") or {}).get("next")
+        url = _htb_trusted_url((resp.get("links") or {}).get("next"))
 
     if os_name:
         machines = [m for m in machines if (m.get("os") or "").lower() == os_name.lower()]
@@ -652,7 +661,7 @@ def main():
     p_mach.add_argument("--solved", choices=["true", "false"], help="list: filter by root ownership")
     p_mach.add_argument("--retired", action="store_true", help="list: retired boxes instead of active ones")
     p_mach.add_argument("--name", help="info: box name")
-    p_mach.add_argument("--id", help="spawn/submit: box ID")
+    p_mach.add_argument("--id", type=int, help="spawn/submit: box ID")
     p_mach.add_argument("--flag", help="submit: user or root flag")
 
     # status
