@@ -34,6 +34,11 @@ Démarrage du conteneur : fait par `/ctf-start`. Détails : CLAUDE.md § Exegol.
 - `file *` sur tout, `strings`, `xxd | head`, `binwalk`, `checksec` sur les binaires
 - Lire descriptions, noms de fichiers, commentaires : ils contiennent souvent des indices
 - Fetch des URL mentionnées, `nc` sur les services distants pour comprendre l'attendu
+- **Outil absent = une seule tentative d'installation, bornée** (`timeout 60 …`), puis repli
+  immédiat sur une alternative (ex. `jadx` introuvable → `apktool d` + lecture du smali). Ne
+  t'acharne jamais sur une installation : un recon bloqué coûte plus cher qu'un outil de repli.
+- **Mobile / APK** : `apktool d` → manifest, handler `onClick`, puis se demander si la sortie de
+  succès dépend réellement de l'entrée.
 
 ### 2. Cible « machine » réseau (seulement si on attaque une IP/host, ex. HTB machine)
 - Scan rapide : `nmap -sC -sV -T4 <target>`, puis `nmap -p- -sV <target>` si besoin
@@ -102,6 +107,8 @@ Toujours produire le rapport dans ce format exact :
 - Tu **remplis `recon-report.md`** (artefacts, services, pistes) AVANT de passer la main,
   même si le triage est rapide — ne jamais laisser le rapport en placeholder
 - Tu documentes TOUT, même les culs-de-sac
+- Toute valeur critique (index, clé, offset) est soit **vérifiée**, soit balisée `[NON VÉRIFIÉ]`
+  dans le rapport, pour que l'exploit sache quoi revalider
 - Tu consultes la mémoire par pertinence avant de commencer :
   `python3 tools/kb-search/kb_search.py "<mots-clés du challenge>"`
   (complète au besoin par la lecture de `knowledge-base/techniques.md` et `lessons-learned.md`)
