@@ -42,12 +42,84 @@ def save_config(config):
         json.dump(config, f, indent=2)
 
 
+def same_origin(url_a, url_b):
+    """Même schéma + hôte + port."""
+    a, b = urllib.parse.urlsplit(url_a), urllib.parse.urlsplit(url_b)
+    return (a.scheme, a.netloc.lower()) == (b.scheme, b.netloc.lower())
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Retire Authorization/Cookie/CSRF-Token sur redirection cross-origin ;
+    avec `block_cross_origin`, refuse carrément ces redirections."""
+
+    SENSITIVE = {"authorization", "cookie", "csrf-token", "x-csrf-token"}
+
+    def __init__(self, block_cross_origin=False):
+        self.block_cross_origin = block_cross_origin
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        cross = not same_origin(req.full_url, newurl)
+        if cross and self.block_cross_origin:
+            return None  # urllib lève HTTPError sur le 3xx
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and cross:
+            for h in list(new.headers):
+                if h.lower() in self.SENSITIVE:
+                    del new.headers[h]
+        return new
+
+
+# Python.org sur macOS n'embarque pas de CA : repli sur les bundles système courants.
+_CA_FALLBACKS = ("/etc/ssl/cert.pem", "/opt/homebrew/etc/ca-certificates/cert.pem")
+
+
+def default_ssl_context():
+    """Contexte TLS qui vérifie les certificats (avec repli sur un bundle CA système)."""
+    ctx = ssl.create_default_context()
+    if ctx.cert_store_stats()["x509_ca"] == 0:
+        for path in _CA_FALLBACKS:
+            if os.path.exists(path):
+                ctx.load_verify_locations(path)
+                break
+    return ctx
+
+
+def _insecure_allowed(url):
+    """TLS non vérifié : uniquement pour l'origine d'une instance CTFd déclarée --insecure."""
+    active = load_config().get("active") or {}
+    if not (active.get("platform") == "ctfd" and active.get("insecure") and active.get("url")):
+        return False
+    return same_origin(url, active["url"])
+
+
+def open_url(req, timeout, ctx, block_cross_origin=False):
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=ctx),
+        _SafeRedirectHandler(block_cross_origin),
+    )
+    return opener.open(req, timeout=timeout)
+
+
+def _ssl_context(url):
+    ctx = default_ssl_context()
+    if _insecure_allowed(url):
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def _urlopen(req, timeout):
+    # Instance --insecure : pas de redirection hors origine (contenu non authentifié).
+    return open_url(req, timeout, _ssl_context(req.full_url),
+                    block_cross_origin=_insecure_allowed(req.full_url))
+
+
 def get_ctfd_csrf_nonce(base_url, session_cookie):
     for path in ("/challenges", "/"):
         try:
             body = subprocess.check_output(
                 [
-                    "curl", "-ksS",
+                    "curl", *(["-k"] if _insecure_allowed(base_url) else []), "-sS",
                     "-b", f"session={session_cookie}",
                     f"{base_url}{path}",
                 ],
@@ -60,9 +132,6 @@ def get_ctfd_csrf_nonce(base_url, session_cookie):
         except Exception:
             pass
 
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     headers = {
         "Cookie": f"session={session_cookie}",
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -71,7 +140,7 @@ def get_ctfd_csrf_nonce(base_url, session_cookie):
 
     for path in ("/challenges", "/"):
         req = urllib.request.Request(f"{base_url}{path}", headers=headers)
-        with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+        with _urlopen(req, timeout=10) as resp:
             body = resp.read().decode("utf-8", errors="replace")
         match = re.search(r"csrfNonce':\s*\"([0-9a-f]+)\"", body)
         if match:
@@ -107,13 +176,9 @@ def api_request(url, method="GET", data=None, headers=None, token=None, platform
     if data and isinstance(data, dict):
         data = json.dumps(data).encode("utf-8")
 
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+        with _urlopen(req, timeout=30) as resp:
             body = resp.read().decode("utf-8")
             try:
                 return json.loads(body)
@@ -155,9 +220,6 @@ def ctfd_download(base_url, token, challenge_id, dest_dir):
         json.dump(info, f, indent=2)
 
     downloaded = []
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
 
     for file_url in files:
         if file_url.startswith("/"):
@@ -169,13 +231,13 @@ def ctfd_download(base_url, token, challenge_id, dest_dir):
         filepath = os.path.join(dest_dir, filename)
 
         req = urllib.request.Request(file_url)
-        if token:
+        if token and same_origin(file_url, base_url):  # jamais le token vers un hôte tiers
             config = load_config()
             if config.get("auth_type") == "session_cookie":
                 req.add_header("Cookie", f"session={token}")
             else:
                 req.add_header("Authorization", f"Token {token}")
-        with urllib.request.urlopen(req, context=ctx, timeout=60) as resp:
+        with _urlopen(req, timeout=60) as resp:
             with open(filepath, "wb") as f:
                 shutil.copyfileobj(resp, f)
         downloaded.append(filepath)
@@ -237,9 +299,6 @@ def htb_download(token, challenge_id, dest_dir):
 
     # HTB download endpoint returns binary directly via GET
     download_url = f"{HTB_API}/challenge/download/{challenge_id}"
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
 
     filename = info.get("file_name", f"challenge_{challenge_id}.zip")
     filepath = os.path.join(dest_dir, filename)
@@ -247,7 +306,7 @@ def htb_download(token, challenge_id, dest_dir):
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
     try:
-        with urllib.request.urlopen(req, context=ctx, timeout=120) as r:
+        with _urlopen(req, timeout=120) as r:
             with open(filepath, "wb") as f:
                 shutil.copyfileobj(r, f)
         return {"info": info, "files": [filepath]}
@@ -436,6 +495,7 @@ def cmd_connect(args):
         "platform": args.platform,
         "url": args.url.rstrip("/") if args.url else None,
         "token": args.token,
+        "insecure": bool(args.insecure),
     }
     config["active"] = profile
     save_config(config)
@@ -638,6 +698,8 @@ def main():
     p_conn.add_argument("--platform", choices=["ctfd", "htb", "rootme", "sudocrypt"], required=True)
     p_conn.add_argument("--url", help="Platform base URL (required for ctfd)")
     p_conn.add_argument("--token", required=True, help="API token")
+    p_conn.add_argument("--insecure", action="store_true",
+                        help="CTFd uniquement : ne pas vérifier le certificat TLS (instance auto-signée)")
 
     # list
     p_list = sub.add_parser("list")

@@ -20,21 +20,20 @@ import html as _html
 import json
 import os
 import re
-import ssl
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ctf_cli  # noqa: E402
 
 BASE_URL = "https://sudocrypt.com"
 CONFIG_FILE = os.path.expanduser("~/.claude/ctf/sudocrypt_config.json")
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
-_CTX = ssl.create_default_context()
-# macOS Python framework often lacks CA bundle; match ctf_cli.py behaviour.
-_CTX.check_hostname = False
-_CTX.verify_mode = ssl.CERT_NONE
+_CTX = ctf_cli.default_ssl_context()
 
 
 def load_config():
@@ -85,7 +84,7 @@ def request(path, method="GET", body=None, sid=None, csrf=None, accept_json=True
 
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        resp = urllib.request.urlopen(req, context=_CTX, timeout=30)
+        resp = ctf_cli.open_url(req, 30, _CTX)
     except urllib.error.HTTPError as e:
         resp = e
     raw = resp.read().decode("utf-8", errors="replace")
