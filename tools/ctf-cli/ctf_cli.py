@@ -117,15 +117,16 @@ def _urlopen(req, timeout):
 def get_ctfd_csrf_nonce(base_url, session_cookie):
     for path in ("/challenges", "/"):
         try:
-            body = subprocess.check_output(
-                [
-                    "curl", *(["-k"] if _insecure_allowed(base_url) else []), "-sS",
-                    "-b", f"session={session_cookie}",
-                    f"{base_url}{path}",
-                ],
+            # Cookie fourni via stdin (-K -) : jamais dans l'argv, visible par `ps`.
+            body = subprocess.run(
+                ["curl", *(["-k"] if _insecure_allowed(base_url) else []), "-sS", "-K", "-",
+                 f"{base_url}{path}"],
+                input=f'header = "Cookie: session={session_cookie}"\n',
+                capture_output=True,
                 text=True,
                 timeout=15,
-            )
+                check=True,
+            ).stdout
             match = re.search(r"csrfNonce':\s*\"([0-9a-f]+)\"", body)
             if match:
                 return match.group(1)
