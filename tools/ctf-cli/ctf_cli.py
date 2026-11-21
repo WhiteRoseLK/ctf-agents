@@ -35,8 +35,9 @@ def save_config(config):
     """Écrit la config (contient des tokens) en 0600, dossier en 0700."""
     config_dir = os.path.dirname(CONFIG_FILE)
     os.makedirs(config_dir, mode=0o700, exist_ok=True)
-    os.chmod(config_dir, 0o700)
-    fd = os.open(CONFIG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    if not os.path.islink(config_dir):  # ne pas modifier la cible d'un lien symbolique
+        os.chmod(config_dir, 0o700)
+    fd = os.open(CONFIG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     os.fchmod(fd, 0o600)  # corrige un fichier préexistant en 644
     with os.fdopen(fd, "w") as f:
         json.dump(config, f, indent=2)
