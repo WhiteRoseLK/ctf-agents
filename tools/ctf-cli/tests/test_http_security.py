@@ -47,7 +47,7 @@ class _Server:
 class RedirectTest(unittest.TestCase):
     def _fetch(self, url):
         req = urllib.request.Request(url, headers={
-            "Authorization": "Bearer SECRET", "Cookie": "session=SECRET", "CSRF-Token": "SECRET"})
+            "Authorization": "Bearer SECRET", "Cookie": "session=SECRET", "CSRF-Token": "SECRET", "X-CSRF-Token": "SECRET"})
         return ctf_cli._urlopen(req, timeout=5).read()
 
     def test_cross_host_redirect_strips_credentials(self):
@@ -58,7 +58,7 @@ class RedirectTest(unittest.TestCase):
         self._fetch(origin.url + "/start")
         self.assertIn("authorization", origin.seen[0])
         self.assertEqual(len(target.seen), 1)
-        for h in ("authorization", "cookie", "csrf-token"):
+        for h in ("authorization", "cookie", "csrf-token", "x-csrf-token"):
             self.assertNotIn(h, target.seen[0])
 
     def test_same_host_redirect_keeps_credentials(self):

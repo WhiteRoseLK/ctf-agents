@@ -52,7 +52,7 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Retire Authorization/Cookie/CSRF-Token sur redirection cross-origin ;
     avec `block_cross_origin`, refuse carrément ces redirections."""
 
-    SENSITIVE = {"authorization", "cookie", "csrf-token"}
+    SENSITIVE = {"authorization", "cookie", "csrf-token", "x-csrf-token"}
 
     def __init__(self, block_cross_origin=False):
         self.block_cross_origin = block_cross_origin
@@ -175,7 +175,6 @@ def api_request(url, method="GET", data=None, headers=None, token=None, platform
 
     if data and isinstance(data, dict):
         data = json.dumps(data).encode("utf-8")
-
 
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
