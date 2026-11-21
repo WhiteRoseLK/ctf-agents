@@ -23,6 +23,29 @@ class CsrfNonceTest(unittest.TestCase):
         self.assertFalse(any("SECRETCOOKIE" in a for a in argv))
         self.assertIn("SECRETCOOKIE", kw["input"])
 
+    def test_cookie_cannot_inject_curl_directives(self):
+        cfg = ctf_cli._curl_header_config("Cookie", 'session=a"b\\c')
+        self.assertEqual(cfg, 'header = "Cookie: session=a\\"b\\\\c"\n')
+        for bad in ("x\noutput = /tmp/pwn", "x\r", "x\x00"):
+            with self.assertRaises(ValueError):
+                ctf_cli._curl_header_config("Cookie", bad)
+
+    def test_malicious_cookie_skips_curl_and_never_runs_it(self):
+        with mock.patch.object(ctf_cli.subprocess, "run") as run, \
+                mock.patch.object(ctf_cli, "load_config", return_value={}), \
+                mock.patch.object(ctf_cli, "_urlopen", side_effect=RuntimeError("stop")):
+            with self.assertRaises(RuntimeError):
+                ctf_cli.get_ctfd_csrf_nonce("https://ctf.example", "a\noutput = /tmp/pwn")
+        run.assert_not_called()
+
+    def test_k_present_only_when_insecure(self):
+        calls = []
+        fake = lambda a, **k: calls.append(a) or mock.Mock(returncode=0, stdout="csrfNonce': \"ab\"")
+        with mock.patch.object(ctf_cli.subprocess, "run", side_effect=fake), \
+                mock.patch.object(ctf_cli, "_insecure_allowed", return_value=True):
+            ctf_cli.get_ctfd_csrf_nonce("https://ctf.example", "C")
+        self.assertIn("-k", calls[0])
+
     def test_k_only_when_insecure(self):
         calls = []
         with mock.patch.object(ctf_cli.subprocess, "run",

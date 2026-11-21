@@ -114,6 +114,14 @@ def _urlopen(req, timeout):
                     block_cross_origin=_insecure_allowed(req.full_url))
 
 
+def _curl_header_config(name, value):
+    """Ligne de config curl (`-K -`) ; refuse les caractères de contrôle (injection de directives)."""
+    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise ValueError("caractère de contrôle dans la valeur d'en-tête")
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'header = "{name}: {escaped}"\n'
+
+
 def get_ctfd_csrf_nonce(base_url, session_cookie):
     for path in ("/challenges", "/"):
         try:
@@ -121,7 +129,7 @@ def get_ctfd_csrf_nonce(base_url, session_cookie):
             body = subprocess.run(
                 ["curl", *(["-k"] if _insecure_allowed(base_url) else []), "-sS", "-K", "-",
                  f"{base_url}{path}"],
-                input=f'header = "Cookie: session={session_cookie}"\n',
+                input=_curl_header_config("Cookie", f"session={session_cookie}"),
                 capture_output=True,
                 text=True,
                 timeout=15,
