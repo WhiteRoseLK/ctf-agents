@@ -28,6 +28,7 @@ You are connecting to a CTF platform. Parse the user's arguments to extract:
 python3 ~/.claude/ctf/ctf_cli.py connect --platform <platform> --url <url> --token <token>
 ```
 For HTB, RootMe, and Sudocrypt, `--url` is optional (built-in defaults are used).
+The TLS certificate is verified by default. For a CTFd instance with a self-signed certificate only, add `--insecure` (applies to that instance's host, never to other platforms).
 
 3. Report the result to the user:
    - If successful: show the number of available challenges
