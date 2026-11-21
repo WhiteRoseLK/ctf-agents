@@ -44,9 +44,10 @@ def load_config():
 
 
 def save_config(cfg):
-    with open(CONFIG_FILE, "w") as f:
+    fd = os.open(CONFIG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    os.fchmod(fd, 0o600)  # corrige un fichier préexistant en 644
+    with os.fdopen(fd, "w") as f:
         json.dump(cfg, f, indent=2)
-    os.chmod(CONFIG_FILE, 0o600)
 
 
 def _session():
