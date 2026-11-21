@@ -5,6 +5,7 @@ Used by Claude Code skills to automate CTF challenge workflows.
 """
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -35,8 +36,16 @@ def save_config(config):
     """Écrit la config (contient des tokens) en 0600, dossier en 0700."""
     config_dir = os.path.dirname(CONFIG_FILE)
     os.makedirs(config_dir, mode=0o700, exist_ok=True)
-    if not os.path.islink(config_dir):  # ne pas modifier la cible d'un lien symbolique
-        os.chmod(config_dir, 0o700)
+    try:  # fchmod sur le descripteur : pas de course, et on ne suit pas un lien symbolique
+        dfd = os.open(config_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as e:
+        if e.errno not in (errno.ELOOP, errno.ENOTDIR):
+            raise
+    else:
+        try:
+            os.fchmod(dfd, 0o700)
+        finally:
+            os.close(dfd)
     fd = os.open(CONFIG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     os.fchmod(fd, 0o600)  # corrige un fichier préexistant en 644
     with os.fdopen(fd, "w") as f:
