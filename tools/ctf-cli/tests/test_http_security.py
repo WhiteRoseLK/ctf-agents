@@ -1,9 +1,12 @@
 import http.server
 import os
+import shutil
 import ssl
 import sys
+import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from unittest import mock
 
@@ -67,6 +70,61 @@ class RedirectTest(unittest.TestCase):
         self.assertEqual(srv.seen[1]["authorization"], "Bearer SECRET")
 
 
+class InsecureRedirectTest(unittest.TestCase):
+    def test_insecure_instance_refuses_cross_origin_redirect(self):
+        target = _Server(lambda r: (200, {}))
+        origin = _Server(lambda r: (302, {"Location": target.url + "/x"}))
+        self.addCleanup(target.close)
+        self.addCleanup(origin.close)
+        req = urllib.request.Request(origin.url, headers={"Authorization": "Bearer S"})
+        ctx = ssl.create_default_context()
+        with self.assertRaises(urllib.error.HTTPError):
+            ctf_cli.open_url(req, 5, ctx, block_cross_origin=True)
+        self.assertEqual(target.seen, [])
+
+
+class DownloadTokenTest(unittest.TestCase):
+    def test_token_not_sent_to_foreign_file_host(self):
+        foreign = _Server(lambda r: (200, {}))
+        self.addCleanup(foreign.close)
+        info = {"files": [foreign.url + "/f.txt"]}
+        dest = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dest, True)
+        with mock.patch.object(ctf_cli, "ctfd_info", return_value=info), \
+                mock.patch.object(ctf_cli, "load_config", return_value={}):
+            ctf_cli.ctfd_download("http://ctf.example.invalid", "TOKEN", 1, dest)
+        self.assertEqual(len(foreign.seen), 1)
+        self.assertNotIn("authorization", foreign.seen[0])
+        self.assertNotIn("cookie", foreign.seen[0])
+
+    def test_token_sent_to_same_origin_file_host(self):
+        srv = _Server(lambda r: (200, {}))
+        self.addCleanup(srv.close)
+        dest = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dest, True)
+        with mock.patch.object(ctf_cli, "ctfd_info", return_value={"files": ["/files/f.txt"]}), \
+                mock.patch.object(ctf_cli, "load_config", return_value={}):
+            ctf_cli.ctfd_download(srv.url, "TOKEN", 1, dest)
+        self.assertEqual(srv.seen[0]["authorization"], "Token TOKEN")
+
+
+class OriginTest(unittest.TestCase):
+    def test_same_origin_compares_scheme_host_port(self):
+        self.assertTrue(ctf_cli.same_origin("https://a.io/x", "https://A.io/y"))
+        self.assertFalse(ctf_cli.same_origin("https://a.io", "http://a.io"))
+        self.assertFalse(ctf_cli.same_origin("https://a.io", "https://a.io:8443"))
+
+
+class CaFallbackTest(unittest.TestCase):
+    def test_loads_system_bundle_when_default_store_empty(self):
+        fake = mock.Mock()
+        fake.cert_store_stats.return_value = {"x509_ca": 0}
+        with mock.patch.object(ssl, "create_default_context", return_value=fake), \
+                mock.patch.object(ctf_cli, "_CA_FALLBACKS", ("/nope", __file__)):
+            ctf_cli.default_ssl_context()
+        fake.load_verify_locations.assert_called_once_with(__file__)
+
+
 class TlsContextTest(unittest.TestCase):
     def _cfg(self, **active):
         return mock.patch.object(ctf_cli, "load_config", return_value={"active": active})
@@ -82,6 +140,7 @@ class TlsContextTest(unittest.TestCase):
         with self._cfg(**active):
             self.assertEqual(ctf_cli._ssl_context("https://ctf.local:8443/api").verify_mode, ssl.CERT_NONE)
             self.assertEqual(ctf_cli._ssl_context("https://other.example/api").verify_mode, ssl.CERT_REQUIRED)
+            self.assertEqual(ctf_cli._ssl_context("http://ctf.local:8443/api").verify_mode, ssl.CERT_REQUIRED)
 
     def test_insecure_ignored_for_non_ctfd_platform(self):
         with self._cfg(platform="htb", url="https://labs.hackthebox.com", insecure=True):
