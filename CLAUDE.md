@@ -55,7 +55,7 @@ Bascule : `/ctf-mode training|competition`. Lecture : `MODE=$(cat .ctf-mode 2>/d
 
 ## Workflow standard (tout est délégué par l'orchestrateur)
 
-1. **Init** → l'orchestrateur lance `/ctf-start <plateforme> <challenge>` : démarre le **worker Orca** du challenge (`worker-start`, worktree + conteneur Exegol via `ocx claude`) et lui passe le brief
+1. **Init** → l'orchestrateur lance `/ctf-start <plateforme> <challenge>` : démarre le **worker Orca** du challenge (`worker-start`, worktree + conteneur Exegol via `ocx claude`) et lui passe le brief ; le worker fait le **setup** (infos API, fiche writeup « en cours » dans le vault, sources, connexion)
 2. **Phase Recon** → **dans le worker**, délégation au sous-agent `recon` : charge `solve-challenge`, triage, produit `recon-report.md` avec la **catégorie détectée**
 3. **Phase Exploit** → **dans le worker**, délégation au sous-agent `exploit` : charge le skill `ctf-<catégorie>`, attaque dans le conteneur Exegol, produit `exploit-log.md` + `flag.txt` + solveur dans `challenges/<nom>/solution/`
 4. **Soumission** → l'orchestrateur lance `/ctf-submit <challenge> <flag>` (archive + soumet + sauve le solveur dans `challenges/<nom>/solution/`)
@@ -133,16 +133,16 @@ challenges/<nom-challenge>/
 
 ### Export writeup → repo CTF privé (seule dépendance externe)
 
-L'étape **writeup** (agent `writeup` + skill `ctf-writeup`) est la **seule** à écrire hors de ce
-repo : dans le repo privé `WhiteRoseLK/ctf-writeups`, cloné sur `~/Documents/CTF/CTF` (= vault
+Seules deux étapes écrivent hors de ce repo : le **setup** (`ctf_cli.py setup`, qui crée la fiche « en cours »,
+non commitée) et l'étape **writeup** (agent `writeup` + skill `ctf-writeup`, qui la finalise et commit) : dans le repo privé `WhiteRoseLK/ctf-writeups`, cloné sur `~/Documents/CTF/CTF` (= vault
 Obsidian). Destination **`<DEST>`** :
 - plateforme permanente : `<HackTheBox|RootMe>/<Catégorie>/<Nom>/`
 - CTF ponctuel : `<Événement>/<Année>/<Catégorie>/<Nom>/` (ex. `THCon/2026/Web/<Nom>/`)
 
 (`<Catégorie>` = celle que **la plateforme** affiche pour le challenge, reprise telle quelle — jamais une liste
-figée dans le repo : une nouvelle catégorie de la plateforme crée simplement un nouveau dossier ; réduite à un segment sûr, cf. `/ctf-submit`). L'orchestrateur note `Export : <DEST>`
-dans `challenges/<nom>/notes.md` et y copie (`cp -R`) `notes.md`, `recon-report.md`,
-`exploit-log.md`, `flag.txt`, `solution/` (jamais `work/`) ; l'agent `writeup` y écrit `<Nom>.md`.
+figée dans le repo : une nouvelle catégorie de la plateforme crée simplement un nouveau dossier ; réduite à un segment sûr, cf. `/ctf-submit`). Le setup note `Export : <DEST>`
+dans `challenges/<nom>/notes.md` ; l'étape writeup y copie (`cp -R`) `notes.md`, `recon-report.md`,
+`exploit-log.md`, `flag.txt`, `solution/` (jamais `work/`) ; l'agent `writeup` complète `<Nom>.md` (fiche créée au setup, statut `en-cours` → `resolu`/`tente` via `ctf_cli.py sheet-status`).
 **CTF ponctuel** : l'agent `writeup` met à jour la synthèse `<Événement>/<Année>/README.md` (date, score, tableau
 challenge | catégorie | points | statut ✅ / ⚠️ tenté / ❌ | lien writeup), `<Événement>/README.md`
 (éditions) et le tableau du `README.md` racine. Puis commit `[writeup] <nom>: …` + `git push`

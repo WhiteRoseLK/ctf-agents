@@ -43,6 +43,18 @@ python3 ~/.claude/ctf/ctf_cli.py machines submit --id <id> --flag <flag>   # use
 `--solved` porte sur le flag root. La cible n'est joignable que par le VPN HTB (`--vpn` d'Exegol).
 Tests : `python3 -m unittest discover -s tools/ctf-cli/tests`.
 
+### Setup d'un challenge
+
+Lancé par `/ctf-start` : récupère par l'API nom, catégorie plateforme, type, difficulté, description, fichiers et
+infos de connexion, crée la **fiche writeup « en cours »** au bon endroit du vault (`status: en-cours`, tag
+`#en-cours`), remplit `notes.md` et télécharge les sources dans `work/`. Aucune instance n'est lancée, une fiche
+existante n'est jamais écrasée.
+
+```bash
+python3 ~/.claude/ctf/ctf_cli.py setup --id <id> --name <nom> --challenge-dir challenges/<nom> [--event <E> --year <AAAA>]
+python3 ~/.claude/ctf/ctf_cli.py sheet-status --sheet <fiche.md> --status resolu   # en-cours | resolu | tente
+```
+
 ### OpenCodex (optionnel, multi-provider)
 
 `./install.sh --opencodex` installe et configure [OpenCodex](https://opencodex.me), un proxy qui
@@ -109,7 +121,7 @@ ctf-agents/
 ├── install.sh                # bootstrap : deps + symlinks skills/CLI
 ├── skills/                   # skills CTF vendorés (solve-challenge, ctf-*, intégration plateforme)
 ├── tools/
-│   ├── ctf-cli/              # CLI plateforme : ctf_cli.py + sudocrypt_cli.py + config.example.json
+│   ├── ctf-cli/              # CLI plateforme : ctf_cli.py + setup_challenge.py + sudocrypt_cli.py + config.example.json
 │   ├── kb-search/            # recherche mémoire TF-IDF
 │   └── hooks/                # enforce_exegol.py (politique d'exécution)
 ├── templates/                # gabarit de writeup (vault)
