@@ -25,7 +25,7 @@ def clean(value):
 
 def oneline(value):
     """Valeur d'API sur une seule ligne (pas d'injection de structure Markdown/YAML)."""
-    return re.sub(r"\s*\n+\s*", " ", clean(value))
+    return re.sub(r"\s*[\n\r\u2028\u2029\x85]+\s*", " ", clean(value))
 
 
 def slug_segment(text):
@@ -47,7 +47,7 @@ def compute_dest(platform, category, name, event=None, year=None):
         dest = f"{PLATFORM_LABELS[platform]}/{cat}/{nm}"
     else:
         raise ValueError(f"plateforme {platform!r} : indiquer --event et --year (CTF ponctuel)")
-    if not DEST_RE.match(dest):
+    if not DEST_RE.fullmatch(dest):
         raise ValueError(f"DEST invalide : {dest!r}")
     return dest
 
@@ -111,11 +111,20 @@ def normalize(platform, info, categories=None):
     return meta
 
 
+def _defang(text):
+    """Neutralise HTML, callouts, transclusions, tags et images Markdown dans un texte non fiable."""
+    return (text.replace("<", "&lt;").replace(">", "&gt;").replace("[!", "[ !")
+            .replace("[[", "[ [").replace("![", "! [").replace("#", "\\#"))
+
+
 def _quote(text):
-    """Texte non fiable en citation Markdown, sans HTML ni callout interprétés."""
-    safe = (text.replace("<", "&lt;").replace(">", "&gt;").replace("[!", "[ !")
-            .replace("[[", "[ [").replace("#", "\\#"))
-    return "\n".join("> " + line for line in safe.splitlines()) or "> _(aucune)_"
+    """Texte non fiable en citation Markdown, sans rien d'interprété."""
+    return "\n".join("> " + line for line in _defang(text).splitlines()) or "> _(aucune)_"
+
+
+def _fm(value):
+    """Valeur de frontmatter YAML : chaîne JSON (YAML valide), sans lien `[[…]]`."""
+    return json.dumps(str(value).replace("[[", "[ ["))
 
 
 def _tag(text):
@@ -124,26 +133,27 @@ def _tag(text):
 
 def render_sheet(meta, dest):
     label = PLATFORM_LABELS.get(meta["platform"], meta["platform"])
+    shown = {k: _defang(str(meta[k])) for k in ("name", "category", "type", "difficulty", "points")}
     tags = " ".join(f"#{t}" for t in (_tag(meta["platform"]), _tag(meta["category"]), "en-cours") if t)
     conn = "\n".join(f"- `{c}`" for c in meta["connection"]) or (
         "- _instance à démarrer_" if meta["instance_to_start"] else "- _aucun serveur_")
     files = "\n".join(f"- `{f}`" for f in meta["files"]) or "- _aucun fichier_"
     return f"""---
 status: en-cours
-platform: {json.dumps(label)}
-category: {json.dumps(meta['category'])}
-type: {json.dumps(meta['type'])}
+platform: {_fm(label)}
+category: {_fm(meta['category'])}
+type: {_fm(meta['type'])}
 date: {datetime.date.today().isoformat()}
 ---
 > [!info] Challenge Summary
 > **Platform:** {label}
-> **Category:** {meta['category']}
-> **Type:** {meta['type']}
-> **Difficulty:** {meta['difficulty'] or '?'}
-> **Points:** {meta['points'] or '?'}
+> **Category:** {shown['category']}
+> **Type:** {shown['type']}
+> **Difficulty:** {shown['difficulty'] or '?'}
+> **Points:** {shown['points'] or '?'}
 > **Flag:** _en cours_
 
-# {meta['name']}
+# {shown['name']}
 
 ## Description
 
@@ -245,7 +255,7 @@ def _open_dir(parent_fd, part, create):
 
 def write_sheet(vault_root, dest, name, content):
     """Crée `<vault>/<dest>/<name>.md` sans jamais écraser ni suivre un lien symbolique (descripteurs)."""
-    if not DEST_RE.match(dest):
+    if not DEST_RE.fullmatch(dest):
         raise ValueError(f"DEST invalide : {dest!r}")
     nm = slug_segment(name)
     fd = os.open(vault_root, os.O_RDONLY | os.O_DIRECTORY)

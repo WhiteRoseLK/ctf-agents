@@ -169,13 +169,23 @@ class InjectionTest(unittest.TestCase):
         head = out.split("\n---\n", 2)
         self.assertEqual(out.count("\n---\n"), 1)  # une seule fermeture du frontmatter
         self.assertEqual(len([l for l in out.splitlines() if l.startswith("status:")]), 1)
-        self.assertFalse(any(l.startswith("# ") and "Fake" in l and l != "# N # Fake" for l in out.splitlines()))
+        self.assertEqual(len([l for l in out.splitlines() if l.startswith("# ")]), 1)  # un seul titre
         self.assertNotIn("\n# Pwned", out)
         self.assertNotIn("`x`", out)
 
     def test_frontmatter_values_are_quoted(self):
         m = sc.normalize("ctfd", {"name": "N", "category": "a: b {c} #d"})
         self.assertIn('category: "a: b {c} #d"', sc.render_sheet(m, "d"))
+
+    def test_title_and_callout_cannot_transclude_or_tag(self):
+        m = sc.normalize("ctfd", {"name": "![[secret]] #x", "category": "[[c]]", "difficulty": "#resolu"})
+        out = sc.render_sheet(m, "d")
+        self.assertNotIn("![[", out)
+        self.assertNotIn("[[c]]", out)
+        self.assertEqual(out.count("#resolu"), 0)
+
+    def test_unicode_line_separators_flattened(self):
+        self.assertEqual(sc.oneline("a\u2028b\u2029c\x85d"), "a b c d")
 
     def test_description_cannot_transclude_or_tag(self):
         q = sc._quote("![[secret]] #resolu [[x]]")
