@@ -246,7 +246,7 @@ def ctfd_download(base_url, token, challenge_id, dest_dir):
         elif not file_url.startswith("http"):
             file_url = f"{base_url}/files/{file_url}"
 
-        filename = file_url.split("/")[-1].split("?")[0]
+        filename = _safe_filename(file_url.split("/")[-1].split("?")[0], "file.bin")
         filepath = os.path.join(dest_dir, filename)
 
         req = urllib.request.Request(file_url)
@@ -274,6 +274,12 @@ def ctfd_submit(base_url, token, challenge_id, flag):
 
 HTB_API = "https://labs.hackthebox.com/api/v4"
 HTB_API_V5 = "https://labs.hackthebox.com/api/v5"  # machine/own n'existe qu'en v5
+
+def _safe_filename(name, default):
+    """Nom de fichier d'API (non fiable) : basename, jamais vide, `.` ni `..`."""
+    base = os.path.basename(str(name or "").replace("\\", "/"))
+    return default if base in ("", ".", "..") else base
+
 
 def htb_categories(token):
     """Fetch and cache HTB category id->name mapping."""
@@ -319,7 +325,7 @@ def htb_download(token, challenge_id, dest_dir):
     # HTB download endpoint returns binary directly via GET
     download_url = f"{HTB_API}/challenge/download/{challenge_id}"
 
-    filename = info.get("file_name", f"challenge_{challenge_id}.zip")
+    filename = _safe_filename(info.get("file_name"), f"challenge_{challenge_id}.zip")
     filepath = os.path.join(dest_dir, filename)
     req = urllib.request.Request(download_url)
     req.add_header("Authorization", f"Bearer {token}")
@@ -708,6 +714,93 @@ def cmd_machines(args):
     print(json.dumps(result, indent=2))
 
 
+def _fail(msg, code=2):
+    print(f"setup: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def cmd_setup(args):
+    """Fiche writeup « en cours » dans le vault + notes.md + sources dans work/ (aucune instance lancée)."""
+    import setup_challenge as sc
+
+    profile = load_config().get("active")
+    if not profile:
+        _fail("pas de plateforme connectée (/ctf-connect)")
+    platform, token = profile["platform"], profile["token"]
+    if platform == "ctfd":
+        info = ctfd_info(profile["url"], token, args.id)
+    elif platform == "htb":
+        info = htb_info(token, args.id)
+    elif platform == "rootme":
+        info = rootme_info(token, args.id)
+    else:
+        info = sudocrypt_info(token, args.id)
+    categories = htb_categories(token) if platform == "htb" else None
+    meta = sc.normalize(platform, info, categories)
+    meta["name"] = meta["name"] or sc.oneline(args.name)
+    try:
+        dest = sc.compute_dest(platform, meta["category"], args.name or meta["name"],
+                               event=args.event, year=args.year)
+    except ValueError as e:
+        _fail(f"{e} — catégorie à confirmer avec l'utilisateur (reçu : {meta['category']!r})")
+
+    vault = os.path.expanduser(args.vault)
+    sheet_name = args.name or meta["name"]
+    if os.path.exists(os.path.join(vault, *dest.split("/"), f"{sc.slug_segment(sheet_name)}.md")):
+        _fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
+
+    cdir = args.challenge_dir
+    work = os.path.join(cdir, "work")
+    os.makedirs(work, exist_ok=True)
+    files, download_note = [], None
+    if meta["files"] or platform == "ctfd":
+        if platform == "htb":
+            res = htb_download(token, args.id, work)
+        elif platform == "ctfd":
+            res = ctfd_download(profile["url"], token, args.id, work)
+        else:
+            res = {"files": []}
+        files = res.get("files", [])
+        if meta["files"] and not files:
+            download_note = res.get("error") or res.get("note") or "téléchargement vide : utiliser le contournement de ctf-start"
+
+    notes_path = os.path.join(cdir, "notes.md")
+    notes = sc.render_notes(meta, dest)
+    if os.path.exists(notes_path) and os.path.getsize(notes_path) > 0:
+        sc.write_text(notes_path, "\n\n## Setup\n\n" + notes, append=True)
+    else:
+        sc.write_text(notes_path, notes)
+
+    # Fiche écrite en dernier : un échec avant ce point laisse le setup relançable.
+    try:
+        sheet = sc.write_sheet(vault, dest, sheet_name, sc.render_sheet(meta, dest))
+    except FileExistsError:
+        _fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
+    except (ValueError, OSError) as e:
+        _fail(str(e))
+    return {"dest": dest, "sheet": sheet, "notes": notes_path, "work": work, "files": files,
+            "connection": meta["connection"], "instance_to_start": meta["instance_to_start"],
+            "download_note": download_note}
+
+
+def cmd_sheet_status(args):
+    """Passe la fiche du vault à en-cours / resolu / tente."""
+    import setup_challenge as sc
+
+    vault = os.path.realpath(os.path.expanduser(args.vault))
+    sheet = os.path.realpath(args.sheet)
+    if not sheet.startswith(vault + os.sep) or not sheet.endswith(".md"):
+        _fail("la fiche doit être un .md situé dans le vault")
+    with open(sheet) as f:
+        text = f.read()
+    try:
+        out = sc.set_status(text, args.status)
+    except ValueError as e:
+        _fail(str(e))
+    sc.write_text(sheet, out)
+    return {"sheet": sheet, "status": args.status}
+
+
 def main():
     parser = argparse.ArgumentParser(description="CTF Platform CLI")
     sub = parser.add_subparsers(dest="command")
@@ -751,6 +844,19 @@ def main():
     p_mach.add_argument("--id", type=int, help="spawn/submit: box ID")
     p_mach.add_argument("--flag", help="submit: user or root flag")
 
+    p_setup = sub.add_parser("setup", help="fiche writeup en cours + notes + sources d'un challenge")
+    p_setup.add_argument("--id", required=True, help="Challenge ID")
+    p_setup.add_argument("--name", help="Nom du challenge (sinon celui de l'API)")
+    p_setup.add_argument("--event", help="CTF ponctuel : nom de l'événement")
+    p_setup.add_argument("--year", help="CTF ponctuel : année (4 chiffres)")
+    p_setup.add_argument("--vault", default="~/Documents/CTF/CTF", help="Racine du repo CTF privé")
+    p_setup.add_argument("--challenge-dir", required=True, help="challenges/<nom>")
+
+    p_ss = sub.add_parser("sheet-status", help="statut de la fiche : en-cours, resolu, tente")
+    p_ss.add_argument("--sheet", required=True)
+    p_ss.add_argument("--status", required=True, choices=["en-cours", "resolu", "tente"])
+    p_ss.add_argument("--vault", default="~/Documents/CTF/CTF")
+
     # status
     sub.add_parser("status")
 
@@ -765,7 +871,7 @@ def main():
         if args.action == "submit" and not args.flag:
             parser.error("machines submit requires --flag")
 
-    {
+    result = {
         "connect": cmd_connect,
         "list": cmd_list,
         "info": cmd_info,
@@ -773,7 +879,11 @@ def main():
         "submit": cmd_submit,
         "status": cmd_status,
         "machines": cmd_machines,
+        "setup": cmd_setup,
+        "sheet-status": cmd_sheet_status,
     }[args.command](args)
+    if args.command in ("setup", "sheet-status"):
+        print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":

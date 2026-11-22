@@ -32,18 +32,18 @@ le skill `ctf-submit` (qui appelle `~/.claude/ctf/ctf_cli.py submit --id <id> --
    MODE=$(cat .ctf-mode 2>/dev/null || echo training)   # défaut : training
    ```
    - **`training`** (défaut) → **enchaîner automatiquement** (sans redemander, c'est la boucle d'entraînement) :
-     a. **Writeup + export** (quel que soit le mode quand on le lance ; seule étape hors de ce repo,
-        cf. CLAUDE.md § Export) : fixer `<DEST>`
-        (catégorie = `Catégorie plateforme` de `notes.md`, reprise telle quelle puis **réduite à un segment sûr** : translittérer
-        les accents, tout caractère hors `[A-Za-z0-9_-]` (espace, `/`, `&`, `.`…) → `_` ; le segment ne commence pas par `-` et n'est pas vide ni réduit à `_` (sinon demander) ; ce n'est pas la
-        catégorie technique du recon ; si absente, la demander à l'utilisateur plutôt que la deviner ;
-        `<Événement>/<Année>` pour un CTF ponctuel), l'écrire
-        dans `challenges/<nom>/notes.md` (`Export : <DEST>`) — `<DEST>` doit matcher
-        `^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$` (pas de `..`), sinon s'arrêter —, copier le record
-        (`cp -RP` notes, recon-report, exploit-log, flag, solution/ — pas work/) vers
-        `~/Documents/CTF/CTF/<DEST>/` et refuser l'export si `find <DEST> -type l` trouve un lien,
-        puis déléguer le sous-agent `writeup` (writeup + synthèse d'édition) en lui passant
-        `challenges/<nom>/` et `<DEST>`. Enfin vérifier les fichiers exportés et `git -C ~/Documents/CTF/CTF add <DEST> … && commit
+     a. **Writeup + export** (quel que soit le mode quand on le lance ; cf. CLAUDE.md § Export) :
+        lire `<DEST>` dans `Export :` de `challenges/<nom>/notes.md` — fixé et validé au **setup**
+        (`ctf_cli.py setup`) ; la fiche `<DEST>/<Nom>.md` existe déjà dans le vault avec le statut `en-cours`.
+        *(Challenge lancé avant le setup : relancer `ctf_cli.py setup` pour créer la fiche, ou à défaut fixer
+        `<DEST>` à la main : catégorie plateforme réduite à un segment sûr, cf. `setup_challenge.compute_dest`.)*
+        Contrôler que `<DEST>` matche `^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$` (pas de `..`, aucun segment ne commence par `-`), sinon s'arrêter ;
+        copier le record (`cp -RP` notes, recon-report, exploit-log, flag, solution/ — pas work/) vers
+        `~/Documents/CTF/CTF/<DEST>/` et refuser l'export si `find <DEST> -type l` trouve un lien ;
+        puis déléguer le sous-agent `writeup` (il **complète la fiche existante** + synthèse d'édition) en lui passant
+        `challenges/<nom>/` et `<DEST>`. Passer la fiche à `resolu` :
+        `python3 ~/.claude/ctf/ctf_cli.py sheet-status --sheet ~/Documents/CTF/CTF/<DEST>/<Nom>.md --status resolu`.
+        Enfin vérifier les fichiers exportés et `git -C ~/Documents/CTF/CTF add <DEST> … && commit
         "[writeup] <nom>: …" && push` ;
      b. puis `/ctf-retro <nom-du-challenge>` → sous-agent `review` en **mode approfondi**
         (post-mortem méthodo/pièges/cadre + propositions, en plus de la KB/rétro).
