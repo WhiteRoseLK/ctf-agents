@@ -1,6 +1,6 @@
 > [!info] Challenge Summary
 > **Platform:** HackTheBox (Challenges)
-> **Category:** <Reversing|Web|Crypto|Pwn|Forensics|Misc|OSINT|Malware|Hardware|Blockchain>
+> **Category:** <catégorie de la plateforme, telle que dans <DEST>>
 > **Difficulty:** <Very Easy|Easy|Medium|Hard|Insane>
 > **Flag:** `HTB{...}`
 > **Description:** "<énoncé officiel du challenge>"

@@ -34,7 +34,9 @@ le skill `ctf-submit` (qui appelle `~/.claude/ctf/ctf_cli.py submit --id <id> --
    - **`training`** (défaut) → **enchaîner automatiquement** (sans redemander, c'est la boucle d'entraînement) :
      a. **Writeup + export** (quel que soit le mode quand on le lance ; seule étape hors de ce repo,
         cf. CLAUDE.md § Export) : fixer `<DEST>`
-        (catégorie détectée par le recon ; `<Événement>/<Année>` pour un CTF ponctuel), l'écrire
+        (catégorie = `Catégorie plateforme` de `notes.md`, reprise **telle quelle**, espaces → `_` ; ce n'est pas la
+        catégorie technique du recon ; si absente, la demander à l'utilisateur plutôt que la deviner ;
+        `<Événement>/<Année>` pour un CTF ponctuel), l'écrire
         dans `challenges/<nom>/notes.md` (`Export : <DEST>`) — `<DEST>` doit matcher
         `^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$` (pas de `..`), sinon s'arrêter —, copier le record
         (`cp -RP` notes, recon-report, exploit-log, flag, solution/ — pas work/) vers

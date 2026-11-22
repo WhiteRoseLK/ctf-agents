@@ -29,6 +29,9 @@ privé `~/Documents/CTF/CTF` (= vault Obsidian ; cf. CLAUDE.md § Export) :
 jamais un autre dossier ni une autre catégorie. N'écris JAMAIS dans ce repo-ci. Tu ne commits pas :
 l'orchestrateur s'en charge.
 
+**Énoncé OBLIGATOIRE** : la Description officielle vient de `notes.md` (fournie par l'orchestrateur) ; si elle
+manque, demande-la plutôt que de laisser « à compléter ».
+
 **OBLIGATOIRE** — tout challenge résolu DOIT avoir son writeup. Pars du gabarit
 `templates/writeup-template.md` de ce repo.
 
@@ -36,11 +39,15 @@ Format d'entête du vault (callout Obsidian) :
 ```markdown
 > [!info] Challenge Summary
 > **Platform:** HackTheBox (Challenges)
-> **Category:** <Reversing|Web|Crypto|Pwn|Misc|OSINT|Hardware|Blockchain|...>
+> **Category:** <segment « catégorie » de <DEST>>
 > **Difficulty:** <Easy|Medium|...>
 > **Flag:** `HTB{...}`
 ```
-La catégorie du callout est celle de `<DEST>`. Terminer par des tags `#htb #<catégorie>`.
+**Catégorie = celle de `<DEST>`, jamais une liste fixe.** Les catégories viennent de la plateforme
+(HTB peut en ajouter demain) : tu reprends le segment catégorie du `<DEST>` fourni, tel quel, sans le
+rapprocher d'une catégorie « connue » (ex. une APK reste `Mobile`, pas `Reversing`). Si `<DEST>` manque,
+est ambigu ou ne contient pas de catégorie, **demande-le à l'orchestrateur** au lieu de le déduire.
+Terminer par des tags `#htb #<catégorie en minuscules>`.
 
 ## Sources
 
@@ -56,7 +63,7 @@ Lis ces fichiers dans l'ordre avant de rédiger :
 ```markdown
 > [!info] Challenge Summary
 > **Platform:** HackTheBox (Challenges)
-> **Category:** <Reversing|Web|Crypto|Pwn|Misc|...>
+> **Category:** <catégorie de <DEST>>
 > **Difficulty:** Easy / Medium / Hard / Insane
 > **Flag:** `HTB{...}`
 
