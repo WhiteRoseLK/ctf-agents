@@ -42,6 +42,14 @@ via le skill **`orchestration`** d'Orca (cf. ADR `docs/adr/0001`) :
   pas de solveur inline, pas d'analyse de binaire). Si l'envie de « juste résoudre » surgit : **déléguer**.
 - Il ne garde en propre que : l'init (`/ctf-start`), la **soumission** (`/ctf-submit`), et le
   **déclenchement** des sous-agents `writeup` et `review`.
+- **Supervision d'un worker bloqué** : l'orchestrateur n'est réveillé que par `worker_done` ou un
+  message, donc il **arme un réveil périodique** (outil de planification de la session) tant qu'un
+  worker tourne. À chaque réveil, un worker sans `worker_done` depuis **15 min** est contrôlé :
+  `orca orchestration worker-read --dispatch <id>` ; sortie inchangée depuis le dernier contrôle =
+  bloqué. Alors **1)** `orchestration send --to dispatch:<id>` avec la consigne de repli (« outil
+  indisponible : abandonne l'installation, replie-toi sur l'alternative ») ; **2)** toujours bloqué
+  **10 min** après, **prévenir l'utilisateur** — jamais de `worker-stop` automatique (perd le travail
+  en cours). Les causes connues (outil absent…) sont dans la KB : `kb_search.py "outil absent"`.
 
 ## Mode : entraînement / compétition
 
