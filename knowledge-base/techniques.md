@@ -141,6 +141,67 @@ Format d'une entrée :
 
 ---
 
+## Web (foothold applicatif)
+
+### FreePBX : endpoint non authentifié → auth-bypass → SQLi stackée → RCE
+- **Catégorie / skill** : web (foothold machine Linux) → `ctf-web`
+- **Challenge(s)** : Connected (HTB #906, Easy) — 1re box réseau de l'équipe, foothold en 1 vecteur
+- **Quand l'utiliser** : cible FreePBX/Sangoma (frontend Asterisk, souvent CentOS 7, Apache+PHP) dont
+  le framework est **antérieur au correctif 16.0.89 / 15.0.66 / 17.0.3** et expose le module commercial
+  `endpoint`. Fingerprint : `/admin` redirige, page « FreePBX Administration » avec `load_version=…`,
+  `config.php?display=endpoint` → 200.
+- **Insight clé** : CVE-2025-57819 (CISA KEV, CVSS 4.0 = 10.0) enchaîne trois primitives — (1)
+  **auth-bypass** en passant le module via son chemin de classe (`module=FreePBX\modules\endpoint\ajax`)
+  pour atteindre le code du module sans session ; (2) **SQLi stackée** sur le paramètre `brand` de
+  `admin/ajax.php`, qui permet un `INSERT` ; (3) **RCE** en insérant une tâche dans la table `cron_jobs`,
+  exécutée ~toutes les 60 s par le **scheduler DAG** de FreePBX (utilisateur `asterisk`) → dépôt d'un
+  webshell PHP dans `/var/www/html`. Shell obtenu : `uid=asterisk`.
+- **Approche** : partir du PoC public watchTowr (`watchTowr-vs-FreePBX-CVE-2025-57819`), l'adapter au
+  vhost en HTTPS auto-signé (`-k`). Vérifier l'auth-bypass d'abord (une erreur 500 « array offset on
+  value of type bool » dans `modules/endpoint/views/model.php` prouve qu'on atteint le code du module).
+- **Pièges** : le `+` d'un payload base64 devient espace dans l'URL → encoder `+`→`%2b` sinon le webshell
+  est corrompu. Attendre le passage du scheduler (jusqu'à ~60 s) avant de tester le webshell. Post-foothold :
+  creds MySQL dans `/etc/freepbx.conf`, secrets dans `freepbx_settings` (aucun n'a marché en SSH ici).
+
+## Privilege Escalation (Linux)
+
+### `/etc/modprobe.d/*.conf` writable + directive `install` déclenchée en root au chargement d'un module
+- **Catégorie / skill** : privesc Linux → `ctf-web` (workflow machine) / recherche locale
+- **Challenge(s)** : Connected (HTB #906, Easy) — asterisk → root
+- **Quand l'utiliser** : compte de service peu privilégié, `/etc/modprobe.d/<x>.conf` **writable** par ce
+  compte (vérifier chaque fichier, pas que le dossier), et un **module non chargé** qu'un processus root
+  peut (re)charger. Chercher un **déclencheur root** du `modprobe` : service systemd, init-script, ou ici
+  un watch incron.
+- **Insight clé** : une ligne `install <module> <commande>` dans un fichier modprobe.d fait exécuter
+  `<commande>` **par kmod en root** à la place du chargement du module, à chaque `modprobe <module>`. Il
+  suffit donc d'un chemin root qui invoque `modprobe`. Payload gagnant = **commande inline unique**
+  (`install <mod> /usr/bin/install -m 6755 /bin/bash /chemin/RB` → bash setuid root), **pas un script
+  wrapper** (`install <mod> /bin/bash /tmp/p.sh` n'a rien produit).
+- **Approche** : écrire la directive dans le `.conf` writable, déclencher le chargement root, puis
+  `./RB -p -c 'id; cat /root/root.txt'` (euid 0).
+- **Pièges** :
+  - **Choisir le bon déclencheur root.** Ici deux watches incron coexistaient : le watch `legacy`
+    (`/var/spool/asterisk/sysadmin/dahdi_restart` IN_CLOSE_WRITE → `sysadmin_dahdi_restart` → `/etc/init.d/dahdi
+    restart` → `modprobe dahdi`) **sans vérif GPG** = le bon ; le watch `sysadmin_manager` (chemin à hooks
+    **signés GPG**) = impasse (cf. ci-dessous). Toujours préférer le chemin root **sans signature**.
+  - **Vérifier que le trigger a bien lieu en root** avec `pgrep -x asterisk` (le daemon s'arrête un instant),
+    **pas** `ps|grep asterisk` (apache tourne sous l'**utilisateur** asterisk → compteur faussé).
+  - L'init-script peut être redirigé vers **systemd** ; `modprobe` s'exécute alors en root dans le service
+    (PPID 1), pas dans le shell de l'init-script.
+
+### Impasse à connaître : hook « signé GPG » dont le keyring dépend de `getpwuid(uid)`
+- **Catégorie / skill** : privesc Linux (anti-pattern) → note expérientielle
+- **Challenge(s)** : Connected (HTB #906) — Tentative 3, ~40 min perdues
+- **Insight clé** : le watch incron `sysadmin_manager` termine par `system("$hookfile $params")`. L'injection
+  de **pipe** marche (`|` absent de la blacklist `[ ' " $ > < & ; ]`, et la magie `CONTENTS` fait lire les
+  params depuis le contenu d'un fichier → autorise `/` et espaces). MAIS la classe GPG (ionCube) résout son
+  homedir via **`getpwuid(uid courant)`**, pas via `$HOME`. Lancé en root par incrond, elle cherche
+  `/root/.gnupg` (pas de clé FreePBX) → `checkSig` échoue → « Module tampered » → `exit` **avant** `system()`.
+  L'injection ne « marche » qu'invoquée manuellement en tant qu'asterisk → inutile pour la privesc.
+- **Règle** : un chemin root « protégé par signature » dont le keyring se résout par `getpwuid` est
+  inexploitable si le compte bas-privilège ne peut pas peupler `/root/.gnupg`. Tester tôt
+  (`env -i HOME=/tmp/x …` montre que `$HOME` est ignoré) et basculer sur un déclencheur **non signé**.
+
 ## Méta / environnement
 
 ### macOS sans outils Linux natifs → sockets & parsing Python
@@ -152,4 +213,4 @@ Format d'une entrée :
 
 ---
 
-_Dernière mise à jour : 2026-10-31 (SuspiciousThreat : rootkit LD_PRELOAD)_
+_Dernière mise à jour : 2026-11-18 (Connected : FreePBX CVE-2025-57819 + privesc modprobe.d/install)_
