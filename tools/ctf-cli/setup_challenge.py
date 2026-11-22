@@ -281,7 +281,7 @@ def write_text(path, text, append=False):
 
 def read_text(path):
     """Lit un fichier texte sans suivre de lien symbolique."""
-    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "r") as f:
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "r", encoding="utf-8", errors="replace") as f:
         return f.read()
 
 

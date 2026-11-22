@@ -275,6 +275,14 @@ class CtfdDownloadTest(unittest.TestCase):
             self.download([], [])
         self.assertEqual(read(target), "intact")
 
+    def test_read_text_tolerates_non_utf8_bytes(self):
+        non_utf8 = os.path.join(self.t.name, "bad.txt")
+        with open(non_utf8, "wb") as f:
+            f.write(b"header\xff\xfe\xfafooter")
+        text = sc.read_text(non_utf8)
+        self.assertIn("header", text)
+        self.assertIn("footer", text)
+
 
 class CliSetupTest(unittest.TestCase):
     """cmd_setup de bout en bout, API simulée, vault et challenge jetables."""

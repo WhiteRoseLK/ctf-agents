@@ -232,6 +232,7 @@ def ctfd_info(base_url, token, challenge_id):
 def _create_unique(dest_dir, filename):
     """Crée `filename` dans dest_dir en exclusif (O_EXCL|O_NOFOLLOW), suffixe `-N` si le nom est pris
     (fichier ou lien symbolique, jamais suivi). Retourne (chemin, objet fichier binaire)."""
+    filename = os.path.basename(filename)
     stem, ext = os.path.splitext(filename)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
     for n in range(0, 1000):
