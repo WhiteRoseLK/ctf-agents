@@ -6,6 +6,8 @@ segment de chemin sûr avant d'être utilisée pour le <DEST>.
 """
 
 import datetime
+import errno
+import json
 import os
 import re
 import unicodedata
@@ -19,6 +21,11 @@ _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 def clean(value):
     """Texte d'API : sans caractères de contrôle (garde \\n et \\t), espaces de bord retirés."""
     return _CTRL.sub("", "" if value is None else str(value)).strip()
+
+
+def oneline(value):
+    """Valeur d'API sur une seule ligne (pas d'injection de structure Markdown/YAML)."""
+    return re.sub(r"\s*\n+\s*", " ", clean(value))
 
 
 def slug_segment(text):
@@ -68,10 +75,10 @@ def normalize(platform, info, categories=None):
         if info.get("docker"):
             ctype = "Challenge (instance Docker)"
             play = info.get("play_info") or {}
-            ip = clean(info.get("docker_ip") or play.get("ip"))
+            ip = oneline(info.get("docker_ip") or play.get("ip"))
             ports = info.get("docker_ports") or play.get("ports") or []
             if ip and ports:
-                connection = [f"{ip}:{clean(p)}" for p in ports]
+                connection = [f"{ip}:{oneline(p)}" for p in ports]
             else:
                 to_start = True
         points, difficulty, solves = info.get("points"), info.get("difficulty"), info.get("solves")
@@ -90,15 +97,15 @@ def normalize(platform, info, categories=None):
         solves = _first(info, "solves", "validations")
     meta = {
         "platform": platform,
-        "name": clean(_first(info, "name", "titre", "title")),
-        "category": clean(category),
-        "type": clean(ctype),
-        "difficulty": clean(difficulty),
-        "points": clean(points),
-        "solves": clean(solves),
+        "name": oneline(_first(info, "name", "titre", "title")),
+        "category": oneline(category),
+        "type": oneline(ctype),
+        "difficulty": oneline(difficulty),
+        "points": oneline(points),
+        "solves": oneline(solves),
         "description": clean(_first(info, "description", "texte", "soustitre")),
-        "files": [f for f in files if f],
-        "connection": [c for c in (clean(c) for c in connection) if c],
+        "files": [f for f in (oneline(f).replace("`", "'") for f in files) if f],
+        "connection": [c for c in (oneline(c).replace("`", "'") for c in connection) if c],
         "instance_to_start": to_start,
     }
     return meta
@@ -106,7 +113,8 @@ def normalize(platform, info, categories=None):
 
 def _quote(text):
     """Texte non fiable en citation Markdown, sans HTML ni callout interprétés."""
-    safe = text.replace("<", "&lt;").replace(">", "&gt;").replace("[!", "[ !")
+    safe = (text.replace("<", "&lt;").replace(">", "&gt;").replace("[!", "[ !")
+            .replace("[[", "[ [").replace("#", "\\#"))
     return "\n".join("> " + line for line in safe.splitlines()) or "> _(aucune)_"
 
 
@@ -122,9 +130,9 @@ def render_sheet(meta, dest):
     files = "\n".join(f"- `{f}`" for f in meta["files"]) or "- _aucun fichier_"
     return f"""---
 status: en-cours
-platform: {label}
-category: {meta['category']}
-type: {meta['type']}
+platform: {json.dumps(label)}
+category: {json.dumps(meta['category'])}
+type: {json.dumps(meta['type'])}
 date: {datetime.date.today().isoformat()}
 ---
 > [!info] Challenge Summary
@@ -182,12 +190,16 @@ _en cours_
 
 
 def set_status(sheet_text, status):
+    """Change `status:` du frontmatter et le tag d'état de la dernière ligne (jamais le corps)."""
     if status not in STATUSES:
         raise ValueError(f"statut inconnu : {status!r} (attendu : {', '.join(STATUSES)})")
+    if not sheet_text.startswith("---\nstatus: "):
+        raise ValueError("ce fichier n'est pas une fiche de challenge (frontmatter `status:` absent)")
     out = re.sub(r"(?m)^status: .*$", f"status: {status}", sheet_text, count=1)
-    for s in STATUSES:
-        out = re.sub(rf"(?m)(^| )#{s}(?=\s|$)", rf"\1#{status}", out)
-    return out
+    head, sep, last = out.rstrip("\n").rpartition("\n")
+    for s_ in STATUSES:
+        last = re.sub(rf"(^| )#{s_}(?=\s|$)", rf"\1#{status}", last)
+    return head + sep + last + "\n"
 
 
 def render_notes(meta, dest):
@@ -217,19 +229,41 @@ def render_notes(meta, dest):
 """
 
 
+def _open_dir(parent_fd, part, create):
+    if create:
+        try:
+            os.mkdir(part, 0o755, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+    try:
+        return os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    except OSError as e:
+        if e.errno in (errno.ELOOP, errno.ENOTDIR):
+            raise ValueError(f"lien symbolique ou non-dossier dans le chemin : {part}") from e
+        raise
+
+
 def write_sheet(vault_root, dest, name, content):
-    """Crée `<vault>/<dest>/<name>.md` sans jamais écraser ni traverser un lien symbolique."""
+    """Crée `<vault>/<dest>/<name>.md` sans jamais écraser ni suivre un lien symbolique (descripteurs)."""
     if not DEST_RE.match(dest):
         raise ValueError(f"DEST invalide : {dest!r}")
     nm = slug_segment(name)
-    path = vault_root
-    for part in dest.split("/"):
-        path = os.path.join(path, part)
-        if os.path.islink(path):
-            raise ValueError(f"lien symbolique dans le chemin : {path}")
-        os.makedirs(path, exist_ok=True)
-    target = os.path.join(path, f"{nm}.md")
-    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
-    with os.fdopen(fd, "w") as f:
+    fd = os.open(vault_root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in dest.split("/"):
+            nxt = _open_dir(fd, part, create=True)
+            os.close(fd)
+            fd = nxt
+        ffd = os.open(f"{nm}.md", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=fd)
+    finally:
+        os.close(fd)
+    with os.fdopen(ffd, "w") as f:
         f.write(content)
-    return target
+    return os.path.join(vault_root, *dest.split("/"), f"{nm}.md")
+
+
+def write_text(path, text, append=False):
+    """Écrit un fichier texte sans suivre de lien symbolique."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | (os.O_APPEND if append else os.O_TRUNC)
+    with os.fdopen(os.open(path, flags, 0o644), "w") as f:
+        f.write(text)

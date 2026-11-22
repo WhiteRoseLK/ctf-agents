@@ -246,7 +246,7 @@ def ctfd_download(base_url, token, challenge_id, dest_dir):
         elif not file_url.startswith("http"):
             file_url = f"{base_url}/files/{file_url}"
 
-        filename = file_url.split("/")[-1].split("?")[0]
+        filename = _safe_filename(file_url.split("/")[-1].split("?")[0], "file.bin")
         filepath = os.path.join(dest_dir, filename)
 
         req = urllib.request.Request(file_url)
@@ -274,6 +274,12 @@ def ctfd_submit(base_url, token, challenge_id, flag):
 
 HTB_API = "https://labs.hackthebox.com/api/v4"
 HTB_API_V5 = "https://labs.hackthebox.com/api/v5"  # machine/own n'existe qu'en v5
+
+def _safe_filename(name, default):
+    """Nom de fichier d'API (non fiable) : basename, jamais vide, `.` ni `..`."""
+    base = os.path.basename(str(name or "").replace("\\", "/"))
+    return default if base in ("", ".", "..") else base
+
 
 def htb_categories(token):
     """Fetch and cache HTB category id->name mapping."""
@@ -319,7 +325,7 @@ def htb_download(token, challenge_id, dest_dir):
     # HTB download endpoint returns binary directly via GET
     download_url = f"{HTB_API}/challenge/download/{challenge_id}"
 
-    filename = info.get("file_name", f"challenge_{challenge_id}.zip")
+    filename = _safe_filename(info.get("file_name"), f"challenge_{challenge_id}.zip")
     filepath = os.path.join(dest_dir, filename)
     req = urllib.request.Request(download_url)
     req.add_header("Authorization", f"Bearer {token}")
@@ -731,7 +737,7 @@ def cmd_setup(args):
         info = sudocrypt_info(token, args.id)
     categories = htb_categories(token) if platform == "htb" else None
     meta = sc.normalize(platform, info, categories)
-    meta["name"] = meta["name"] or sc.clean(args.name)
+    meta["name"] = meta["name"] or sc.oneline(args.name)
     try:
         dest = sc.compute_dest(platform, meta["category"], args.name or meta["name"],
                                event=args.event, year=args.year)
@@ -739,25 +745,13 @@ def cmd_setup(args):
         _fail(f"{e} — catégorie à confirmer avec l'utilisateur (reçu : {meta['category']!r})")
 
     vault = os.path.expanduser(args.vault)
-    try:
-        sheet = sc.write_sheet(vault, dest, args.name or meta["name"], sc.render_sheet(meta, dest))
-    except FileExistsError:
+    sheet_name = args.name or meta["name"]
+    if os.path.exists(os.path.join(vault, *dest.split("/"), f"{sc.slug_segment(sheet_name)}.md")):
         _fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
-    except ValueError as e:
-        _fail(str(e))
 
     cdir = args.challenge_dir
-    os.makedirs(os.path.join(cdir, "work"), exist_ok=True)
-    notes_path = os.path.join(cdir, "notes.md")
-    notes = sc.render_notes(meta, dest)
-    if os.path.exists(notes_path) and os.path.getsize(notes_path) > 0:
-        with open(notes_path, "a") as f:
-            f.write("\n\n## Setup\n\n" + notes)
-    else:
-        with open(notes_path, "w") as f:
-            f.write(notes)
-
     work = os.path.join(cdir, "work")
+    os.makedirs(work, exist_ok=True)
     files, download_note = [], None
     if meta["files"] or platform == "ctfd":
         if platform == "htb":
@@ -769,6 +763,21 @@ def cmd_setup(args):
         files = res.get("files", [])
         if meta["files"] and not files:
             download_note = res.get("error") or res.get("note") or "téléchargement vide : utiliser le contournement de ctf-start"
+
+    notes_path = os.path.join(cdir, "notes.md")
+    notes = sc.render_notes(meta, dest)
+    if os.path.exists(notes_path) and os.path.getsize(notes_path) > 0:
+        sc.write_text(notes_path, "\n\n## Setup\n\n" + notes, append=True)
+    else:
+        sc.write_text(notes_path, notes)
+
+    # Fiche écrite en dernier : un échec avant ce point laisse le setup relançable.
+    try:
+        sheet = sc.write_sheet(vault, dest, sheet_name, sc.render_sheet(meta, dest))
+    except FileExistsError:
+        _fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
+    except (ValueError, OSError) as e:
+        _fail(str(e))
     return {"dest": dest, "sheet": sheet, "notes": notes_path, "work": work, "files": files,
             "connection": meta["connection"], "instance_to_start": meta["instance_to_start"],
             "download_note": download_note}
@@ -788,8 +797,7 @@ def cmd_sheet_status(args):
         out = sc.set_status(text, args.status)
     except ValueError as e:
         _fail(str(e))
-    with open(sheet, "w") as f:
-        f.write(out)
+    sc.write_text(sheet, out)
     return {"sheet": sheet, "status": args.status}
 
 

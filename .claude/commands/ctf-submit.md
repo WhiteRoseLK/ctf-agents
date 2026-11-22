@@ -37,7 +37,7 @@ le skill `ctf-submit` (qui appelle `~/.claude/ctf/ctf_cli.py submit --id <id> --
         (`ctf_cli.py setup`) ; la fiche `<DEST>/<Nom>.md` existe déjà dans le vault avec le statut `en-cours`.
         *(Challenge lancé avant le setup : relancer `ctf_cli.py setup` pour créer la fiche, ou à défaut fixer
         `<DEST>` à la main : catégorie plateforme réduite à un segment sûr, cf. `setup_challenge.compute_dest`.)*
-        Contrôler que `<DEST>` matche `^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$` (pas de `..`), sinon s'arrêter ;
+        Contrôler que `<DEST>` matche `^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$` (pas de `..`, aucun segment ne commence par `-`), sinon s'arrêter ;
         copier le record (`cp -RP` notes, recon-report, exploit-log, flag, solution/ — pas work/) vers
         `~/Documents/CTF/CTF/<DEST>/` et refuser l'export si `find <DEST> -type l` trouve un lien ;
         puis déléguer le sous-agent `writeup` (il **complète la fiche existante** + synthèse d'édition) en lui passant

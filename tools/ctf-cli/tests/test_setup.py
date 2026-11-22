@@ -159,6 +159,63 @@ class NotesTest(unittest.TestCase):
         self.assertRegex(out, r"(?m)^> Find the key")
 
 
+class InjectionTest(unittest.TestCase):
+    EVIL = "Web\n---\nstatus: resolu\n# Pwned"
+
+    def test_multiline_fields_cannot_break_frontmatter_or_callout(self):
+        m = sc.normalize("ctfd", {"name": "N\n# Fake", "category": self.EVIL, "type": "a\nb",
+                                  "value": "1\n2", "connection_info": "`x`\ny"})
+        out = sc.render_sheet(m, "d")
+        head = out.split("\n---\n", 2)
+        self.assertEqual(out.count("\n---\n"), 1)  # une seule fermeture du frontmatter
+        self.assertEqual(len([l for l in out.splitlines() if l.startswith("status:")]), 1)
+        self.assertFalse(any(l.startswith("# ") and "Fake" in l and l != "# N # Fake" for l in out.splitlines()))
+        self.assertNotIn("\n# Pwned", out)
+        self.assertNotIn("`x`", out)
+
+    def test_frontmatter_values_are_quoted(self):
+        m = sc.normalize("ctfd", {"name": "N", "category": "a: b {c} #d"})
+        self.assertIn('category: "a: b {c} #d"', sc.render_sheet(m, "d"))
+
+    def test_description_cannot_transclude_or_tag(self):
+        q = sc._quote("![[secret]] #resolu [[x]]")
+        self.assertNotIn("![[", q)
+        self.assertNotIn(" #resolu", q)
+
+    def test_set_status_only_touches_status_and_last_tag_line(self):
+        meta = dict(META, description="mentions #en-cours in text")
+        out = sc.set_status(sc.render_sheet(meta, "x"), "tente")
+        self.assertIn("mentions \\#en-cours in text", out)
+        self.assertTrue(out.rstrip().endswith("#tente"))
+
+    def test_set_status_refuses_non_sheet(self):
+        with self.assertRaises(ValueError):
+            sc.set_status("# juste une note\n#en-cours\n", "resolu")
+
+
+class FilenameTest(unittest.TestCase):
+    def test_safe_filename(self):
+        import ctf_cli
+        for bad in ("../../x.zip", "/etc/passwd", "..\\..\\x", "a/b/c.zip"):
+            self.assertNotIn("/", ctf_cli._safe_filename(bad, "d.zip"))
+            self.assertNotIn("..", ctf_cli._safe_filename(bad, "d.zip"))
+        for empty in ("", None, ".", ".."):
+            self.assertEqual(ctf_cli._safe_filename(empty, "d.zip"), "d.zip")
+
+    def test_htb_download_stays_in_dest(self):
+        import ctf_cli
+        with tempfile.TemporaryDirectory() as d:
+            dest = os.path.join(d, "work")
+            info = {"download": True, "file_name": "../../evil.zip"}
+            resp = mock.MagicMock()
+            resp.__enter__.return_value = __import__("io").BytesIO(b"PK")
+            with mock.patch.object(ctf_cli, "htb_info", return_value=info), \
+                    mock.patch.object(ctf_cli, "_urlopen", return_value=resp):
+                res = ctf_cli.htb_download("T", 1, dest)
+            self.assertEqual(os.path.dirname(res["files"][0]), dest)
+            self.assertEqual(sorted(os.listdir(d)), ["work"])
+
+
 class CliSetupTest(unittest.TestCase):
     """cmd_setup de bout en bout, API simulée, vault et challenge jetables."""
 
@@ -214,6 +271,13 @@ class CliSetupTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.ctf_cli.cmd_setup(self.args())
         self.assertEqual(os.listdir(self.vault), [])
+
+    def test_failed_run_leaves_no_sheet_and_is_rerunnable(self):
+        with mock.patch.object(self.ctf_cli, "htb_download", side_effect=SystemExit(1)):
+            with self.assertRaises(SystemExit):
+                self.ctf_cli.cmd_setup(self.args())
+        self.assertEqual(os.listdir(self.vault), [])
+        self.ctf_cli.cmd_setup(self.args())  # relance OK
 
     def test_existing_sheet_is_not_overwritten(self):
         self.ctf_cli.cmd_setup(self.args())

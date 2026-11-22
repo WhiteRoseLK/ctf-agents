@@ -91,6 +91,10 @@ préalable, ne rien supprimer.**
 
 > ⚠ Jamais de `orca worktree rm` d'un challenge dont le record n'est ni exporté ni archivé.
 
+**Challenge abandonné** (non résolu) : passer sa fiche du vault à `tente` avant le cleanup —
+`python3 ~/.claude/ctf/ctf_cli.py sheet-status --sheet ~/Documents/CTF/CTF/<DEST>/<Nom>.md --status tente`.
+Sans cette étape, elle resterait marquée `en-cours`.
+
 ## Conventions obligatoires
 
 ### Documentation
