@@ -35,7 +35,7 @@ le skill `ctf-submit` (qui appelle `~/.claude/ctf/ctf_cli.py submit --id <id> --
      a. **Writeup + export** (quel que soit le mode quand on le lance ; seule étape hors de ce repo,
         cf. CLAUDE.md § Export) : fixer `<DEST>`
         (catégorie = `Catégorie plateforme` de `notes.md`, reprise telle quelle puis **réduite à un segment sûr** : translittérer
-        les accents, tout caractère hors `[A-Za-z0-9_-]` (espace, `/`, `&`, `.`…) → `_` ; ce n'est pas la
+        les accents, tout caractère hors `[A-Za-z0-9_-]` (espace, `/`, `&`, `.`…) → `_` ; le segment ne commence pas par `-` et n'est pas vide ni réduit à `_` (sinon demander) ; ce n'est pas la
         catégorie technique du recon ; si absente, la demander à l'utilisateur plutôt que la deviner ;
         `<Événement>/<Année>` pour un CTF ponctuel), l'écrire
         dans `challenges/<nom>/notes.md` (`Export : <DEST>`) — `<DEST>` doit matcher

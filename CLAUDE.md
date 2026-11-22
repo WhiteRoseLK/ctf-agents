@@ -140,7 +140,7 @@ Obsidian). Destination **`<DEST>`** :
 - CTF ponctuel : `<Événement>/<Année>/<Catégorie>/<Nom>/` (ex. `THCon/2026/Web/<Nom>/`)
 
 (`<Catégorie>` = celle que **la plateforme** affiche pour le challenge, reprise telle quelle — jamais une liste
-figée dans le repo : une nouvelle catégorie de la plateforme crée simplement un nouveau dossier ; réduite à `[A-Za-z0-9_-]`, comme `<Nom>`). L'orchestrateur note `Export : <DEST>`
+figée dans le repo : une nouvelle catégorie de la plateforme crée simplement un nouveau dossier ; réduite à un segment sûr, cf. `/ctf-submit`). L'orchestrateur note `Export : <DEST>`
 dans `challenges/<nom>/notes.md` et y copie (`cp -R`) `notes.md`, `recon-report.md`,
 `exploit-log.md`, `flag.txt`, `solution/` (jamais `work/`) ; l'agent `writeup` y écrit `<Nom>.md`.
 **CTF ponctuel** : l'agent `writeup` met à jour la synthèse `<Événement>/<Année>/README.md` (date, score, tableau
