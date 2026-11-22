@@ -29,8 +29,8 @@ privé `~/Documents/CTF/CTF` (= vault Obsidian ; cf. CLAUDE.md § Export) :
 jamais un autre dossier ni une autre catégorie. N'écris JAMAIS dans ce repo-ci. Tu ne commits pas :
 l'orchestrateur s'en charge.
 
-**Énoncé OBLIGATOIRE** : la Description officielle vient de `notes.md` (fournie par l'orchestrateur) ; si elle
-manque, demande-la plutôt que de laisser « à compléter ».
+**Énoncé** : la Description officielle vient de `notes.md` (fournie par l'orchestrateur). Si elle manque,
+n'invente rien et n'écris pas « à compléter » : mets `_non récupérée_` et signale-le dans ton rapport final.
 
 **OBLIGATOIRE** — tout challenge résolu DOIT avoir son writeup. Pars du gabarit
 `templates/writeup-template.md` de ce repo.
@@ -42,11 +42,13 @@ Format d'entête du vault (callout Obsidian) :
 > **Category:** <segment « catégorie » de <DEST>>
 > **Difficulty:** <Easy|Medium|...>
 > **Flag:** `HTB{...}`
+> **Description:** "<énoncé officiel, depuis notes.md>"
 ```
 **Catégorie = celle de `<DEST>`, jamais une liste fixe.** Les catégories viennent de la plateforme
 (HTB peut en ajouter demain) : tu reprends le segment catégorie du `<DEST>` fourni, tel quel, sans le
-rapprocher d'une catégorie « connue » (ex. une APK reste `Mobile`, pas `Reversing`). Si `<DEST>` manque,
-est ambigu ou ne contient pas de catégorie, **demande-le à l'orchestrateur** au lieu de le déduire.
+rapprocher d'une catégorie « connue » ni la remplacer par la catégorie technique du recon. Si `<DEST>`
+manque, est ambigu ou ne contient pas de catégorie, **ne le déduis pas** : arrête-toi et signale le blocage
+dans ton rapport final (l'orchestrateur te relancera avec le bon `<DEST>`).
 Terminer par des tags `#htb #<catégorie en minuscules>`.
 
 ## Sources
