@@ -10,9 +10,8 @@ import errno
 import json
 import os
 import re
-import unicodedata
-
 import sys
+import unicodedata
 
 DEST_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*(/[A-Za-z0-9_][A-Za-z0-9_-]*)*$")
 STATUSES = ("en-cours", "resolu", "tente")
@@ -292,22 +291,20 @@ def has_setup_block(notes):
     return "\n## Setup\n" in "\n" + notes or "## Énoncé (donnée de la plateforme, non fiable)" in notes
 
 
-def _fail(msg, code=2):
+def fail(msg, code=2):
     print(f"setup: {msg}", file=sys.stderr)
     sys.exit(code)
 
 
 def setup_challenge(profile, challenge_id, challenge_dir, vault,
-                    name=None, event=None, year=None, api=None):
+                    name=None, event=None, year=None, *, api):
     """Orchestration du setup : fiche writeup dans le vault, notes.md, sources dans work/.
 
     Les dépendances vers les fonctions d'API de plateforme (fetch info, categories, download)
     sont injectées via `api` pour éviter tout couplage direct ou import cyclique.
     """
     if not profile:
-        _fail("pas de plateforme connectée (/ctf-connect)")
-    if api is None:
-        raise ValueError("api map must be provided")
+        fail("pas de plateforme connectée (/ctf-connect)")
 
     platform, token = profile["platform"], profile["token"]
     if platform == "ctfd":
@@ -326,15 +323,14 @@ def setup_challenge(profile, challenge_id, challenge_dir, vault,
         dest = compute_dest(platform, meta["category"], name or meta["name"],
                             event=event, year=year)
     except ValueError as e:
-        _fail(f"{e} — catégorie à confirmer avec l'utilisateur (reçu : {meta['category']!r})")
+        fail(f"{e} — catégorie à confirmer avec l'utilisateur (reçu : {meta['category']!r})")
 
     vault_path = os.path.expanduser(vault)
     sheet_name = name or meta["name"]
     if os.path.exists(os.path.join(vault_path, *dest.split("/"), f"{slug_segment(sheet_name)}.md")):
-        _fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
+        fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
 
-    cdir = challenge_dir
-    work = os.path.join(cdir, "work")
+    work = os.path.join(challenge_dir, "work")
     os.makedirs(work, exist_ok=True)
     files, download_note = [], None
     if meta["files"] or platform == "ctfd":
@@ -348,7 +344,7 @@ def setup_challenge(profile, challenge_id, challenge_dir, vault,
         if meta["files"] and not files:
             download_note = res.get("error") or res.get("note") or "téléchargement vide : utiliser le contournement de ctf-start"
 
-    notes_path = os.path.join(cdir, "notes.md")
+    notes_path = os.path.join(challenge_dir, "notes.md")
     notes = render_notes(meta, dest)
     existing = read_text(notes_path) if os.path.exists(notes_path) else ""
     if has_setup_block(existing):
@@ -362,9 +358,9 @@ def setup_challenge(profile, challenge_id, challenge_dir, vault,
     try:
         sheet = write_sheet(vault_path, dest, sheet_name, render_sheet(meta, dest))
     except FileExistsError:
-        _fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
+        fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
     except (ValueError, OSError) as e:
-        _fail(str(e))
+        fail(str(e))
 
     return {
         "dest": dest,

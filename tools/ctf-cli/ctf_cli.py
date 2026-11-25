@@ -19,9 +19,9 @@ import ssl
 import shutil
 from pathlib import Path
 
-import setup_challenge as sc
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import setup_challenge as sc  # noqa: E402
 
 CONFIG_FILE = os.path.expanduser("~/.claude/ctf/config.json")
 WORK_DIR = os.path.expanduser("~/.claude/ctf/workspace")
@@ -766,13 +766,13 @@ def cmd_sheet_status(args):
     vault = os.path.realpath(os.path.expanduser(args.vault))
     sheet = os.path.realpath(args.sheet)
     if not sheet.startswith(vault + os.sep) or not sheet.endswith(".md"):
-        sc._fail("la fiche doit être un .md situé dans le vault")
+        sc.fail("la fiche doit être un .md situé dans le vault")
     with open(sheet) as f:
         text = f.read()
     try:
         out = sc.set_status(text, args.status)
     except ValueError as e:
-        sc._fail(str(e))
+        sc.fail(str(e))
     sc.write_text(sheet, out)
     return {"sheet": sheet, "status": args.status}
 
