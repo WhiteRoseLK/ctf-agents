@@ -383,6 +383,31 @@ class CliSetupTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.ctf_cli.cmd_sheet_status(argparse.Namespace(sheet=outside, status="resolu", vault=self.vault))
 
+    def test_setup_challenge_direct_without_argparse(self):
+        """setup_challenge appelée directement : paramètres explicites, API injectée."""
+        def fake_download(token, cid, dest):
+            path = os.path.join(dest, "a.zip")
+            with open(path, "wb") as f:
+                f.write(b"PK")
+            return {"files": [path]}
+
+        api = {"htb_info": lambda token, cid: self.info,
+               "htb_categories": lambda token: {9: "Mobile"},
+               "htb_download": fake_download}
+        res = sc.setup_challenge(profile={"platform": "htb", "token": "T"}, challenge_id="240",
+                                 challenge_dir=self.cdir, vault=self.vault, api=api)
+        self.assertEqual(res["dest"], "HackTheBox/Mobile/APKey")
+        self.assertIn("status: en-cours", read(res["sheet"]))
+        self.assertTrue(os.path.exists(os.path.join(res["work"], "a.zip")))
+        self.assertEqual(sorted(res), ["connection", "dest", "download_note", "files",
+                                       "instance_to_start", "notes", "sheet", "work"])
+
+    def test_setup_challenge_without_profile_exits_2(self):
+        with self.assertRaises(SystemExit) as cm:
+            sc.setup_challenge(profile=None, challenge_id="1", challenge_dir=self.cdir,
+                               vault=self.vault, api={})
+        self.assertEqual(cm.exception.code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
