@@ -51,6 +51,9 @@ Deux choix techniques actés :
 - L'utilisateur peut entrer dans n'importe quel worker pour aider, sans casser l'orchestration.
 - Isolation réelle par challenge (worktree + Exegol + branche dédiés).
 - Multi-provider via ocx, bascule selon quota/pertinence.
+- L'orchestrateur n'est pas réveillé uniquement par `worker_done` : il arme aussi un réveil périodique
+  pour détecter un worker bloqué (règle « Supervision d'un worker bloqué » de `CLAUDE.md`, qui
+  porte seuils et commandes).
 
 **Négatives / coûts**
 - Dépendance à Orca (app desktop) et à ocx (proxy) pour le cycle complet.
