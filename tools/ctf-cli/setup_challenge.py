@@ -10,6 +10,7 @@ import errno
 import json
 import os
 import re
+import sys
 import unicodedata
 
 DEST_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*(/[A-Za-z0-9_][A-Za-z0-9_-]*)*$")
@@ -288,3 +289,87 @@ def read_text(path):
 def has_setup_block(notes):
     """notes.md contient déjà le bloc de setup (sous `## Setup`, ou écrit tel quel au premier passage)."""
     return "\n## Setup\n" in "\n" + notes or "## Énoncé (donnée de la plateforme, non fiable)" in notes
+
+
+def fail(msg, code=2):
+    print(f"setup: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def setup_challenge(profile, challenge_id, challenge_dir, vault,
+                    name=None, event=None, year=None, *, api):
+    """Orchestration du setup : fiche writeup dans le vault, notes.md, sources dans work/.
+
+    Les dépendances vers les fonctions d'API de plateforme (fetch info, categories, download)
+    sont injectées via `api` pour éviter tout couplage direct ou import cyclique.
+    """
+    if not profile:
+        fail("pas de plateforme connectée (/ctf-connect)")
+
+    platform, token = profile["platform"], profile["token"]
+    if platform == "ctfd":
+        info = api["ctfd_info"](profile["url"], token, challenge_id)
+    elif platform == "htb":
+        info = api["htb_info"](token, challenge_id)
+    elif platform == "rootme":
+        info = api["rootme_info"](token, challenge_id)
+    else:
+        info = api["sudocrypt_info"](token, challenge_id)
+
+    categories = api["htb_categories"](token) if platform == "htb" else None
+    meta = normalize(platform, info, categories)
+    meta["name"] = meta["name"] or oneline(name)
+    try:
+        dest = compute_dest(platform, meta["category"], name or meta["name"],
+                            event=event, year=year)
+    except ValueError as e:
+        fail(f"{e} — catégorie à confirmer avec l'utilisateur (reçu : {meta['category']!r})")
+
+    vault_path = os.path.expanduser(vault)
+    sheet_name = name or meta["name"]
+    if os.path.exists(os.path.join(vault_path, *dest.split("/"), f"{slug_segment(sheet_name)}.md")):
+        fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
+
+    work = os.path.join(challenge_dir, "work")
+    os.makedirs(work, exist_ok=True)
+    files, download_note = [], None
+    if meta["files"] or platform == "ctfd":
+        if platform == "htb":
+            res = api["htb_download"](token, challenge_id, work)
+        elif platform == "ctfd":
+            res = api["ctfd_download"](profile["url"], token, challenge_id, work)
+        else:
+            res = {"files": []}
+        files = res.get("files", [])
+        if meta["files"] and not files:
+            download_note = res.get("error") or res.get("note") or "téléchargement vide : utiliser le contournement de ctf-start"
+
+    notes_path = os.path.join(challenge_dir, "notes.md")
+    notes = render_notes(meta, dest)
+    existing = read_text(notes_path) if os.path.exists(notes_path) else ""
+    if has_setup_block(existing):
+        pass  # relance : le bloc de setup est déjà dans notes.md
+    elif existing:
+        write_text(notes_path, "\n\n## Setup\n\n" + notes, append=True)
+    else:
+        write_text(notes_path, notes)
+
+    # Fiche écrite en dernier : un échec avant ce point laisse le setup relançable.
+    try:
+        sheet = write_sheet(vault_path, dest, sheet_name, render_sheet(meta, dest))
+    except FileExistsError:
+        fail(f"fiche déjà présente dans le vault pour {dest} — non écrasée", code=3)
+    except (ValueError, OSError) as e:
+        fail(str(e))
+
+    return {
+        "dest": dest,
+        "sheet": sheet,
+        "notes": notes_path,
+        "work": work,
+        "files": files,
+        "connection": meta["connection"],
+        "instance_to_start": meta["instance_to_start"],
+        "download_note": download_note,
+    }
+
