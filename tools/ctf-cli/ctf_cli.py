@@ -229,13 +229,30 @@ def ctfd_info(base_url, token, challenge_id):
     return resp.get("data", resp)
 
 
+def _create_unique(dest_dir, filename):
+    """Crée `filename` dans dest_dir en exclusif (O_EXCL|O_NOFOLLOW), suffixe `-N` si le nom est pris
+    (fichier ou lien symbolique, jamais suivi). Retourne (chemin, objet fichier binaire)."""
+    filename = os.path.basename(filename)
+    stem, ext = os.path.splitext(filename)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    for n in range(0, 1000):
+        path = os.path.join(dest_dir, filename if n == 0 else f"{stem}-{n}{ext}")
+        try:
+            return path, os.fdopen(os.open(path, flags, 0o644), "wb")
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"trop de fichiers nommés {filename} dans {dest_dir}")
+
+
 def ctfd_download(base_url, token, challenge_id, dest_dir):
     info = ctfd_info(base_url, token, challenge_id)
     files = info.get("files", [])
     os.makedirs(dest_dir, exist_ok=True)
 
     # Save challenge metadata
-    with open(os.path.join(dest_dir, "challenge.json"), "w") as f:
+    meta_fd = os.open(os.path.join(dest_dir, "challenge.json"),
+                      os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(meta_fd, "w") as f:
         json.dump(info, f, indent=2)
 
     downloaded = []
@@ -247,7 +264,6 @@ def ctfd_download(base_url, token, challenge_id, dest_dir):
             file_url = f"{base_url}/files/{file_url}"
 
         filename = _safe_filename(file_url.split("/")[-1].split("?")[0], "file.bin")
-        filepath = os.path.join(dest_dir, filename)
 
         req = urllib.request.Request(file_url)
         if token and same_origin(file_url, base_url):  # jamais le token vers un hôte tiers
@@ -257,7 +273,8 @@ def ctfd_download(base_url, token, challenge_id, dest_dir):
             else:
                 req.add_header("Authorization", f"Token {token}")
         with _urlopen(req, timeout=60) as resp:
-            with open(filepath, "wb") as f:
+            filepath, f = _create_unique(dest_dir, filename)
+            with f:
                 shutil.copyfileobj(resp, f)
         downloaded.append(filepath)
 
@@ -766,7 +783,10 @@ def cmd_setup(args):
 
     notes_path = os.path.join(cdir, "notes.md")
     notes = sc.render_notes(meta, dest)
-    if os.path.exists(notes_path) and os.path.getsize(notes_path) > 0:
+    existing = sc.read_text(notes_path) if os.path.exists(notes_path) else ""
+    if sc.has_setup_block(existing):
+        pass  # relance : le bloc de setup est déjà dans notes.md
+    elif existing:
         sc.write_text(notes_path, "\n\n## Setup\n\n" + notes, append=True)
     else:
         sc.write_text(notes_path, notes)

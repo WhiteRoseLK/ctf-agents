@@ -277,3 +277,14 @@ def write_text(path, text, append=False):
     flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | (os.O_APPEND if append else os.O_TRUNC)
     with os.fdopen(os.open(path, flags, 0o644), "w") as f:
         f.write(text)
+
+
+def read_text(path):
+    """Lit un fichier texte sans suivre de lien symbolique."""
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "r", encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def has_setup_block(notes):
+    """notes.md contient déjà le bloc de setup (sous `## Setup`, ou écrit tel quel au premier passage)."""
+    return "\n## Setup\n" in "\n" + notes or "## Énoncé (donnée de la plateforme, non fiable)" in notes

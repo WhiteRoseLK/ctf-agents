@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -226,6 +227,63 @@ class FilenameTest(unittest.TestCase):
             self.assertEqual(sorted(os.listdir(d)), ["work"])
 
 
+class CtfdDownloadTest(unittest.TestCase):
+    """ctfd_download : jamais d'écrasement, jamais de suivi de lien symbolique."""
+
+    def setUp(self):
+        import ctf_cli
+        self.ctf_cli = ctf_cli
+        self.t = tempfile.TemporaryDirectory()
+        self.addCleanup(self.t.cleanup)
+        self.dest = os.path.join(self.t.name, "work")
+
+    def download(self, urls, bodies):
+        import io
+        resps = []
+        for b in bodies:
+            r = mock.MagicMock()
+            r.__enter__.return_value = io.BytesIO(b)
+            resps.append(r)
+        with mock.patch.object(self.ctf_cli, "ctfd_info", return_value={"files": urls}), \
+                mock.patch.object(self.ctf_cli, "load_config", return_value={}), \
+                mock.patch.object(self.ctf_cli, "_urlopen", side_effect=resps):
+            return self.ctf_cli.ctfd_download("https://ctf.example", "T", 1, self.dest)
+
+    def test_same_name_files_are_both_kept(self):
+        res = self.download(["/files/a/f.txt", "/files/b/f.txt"], [b"one", b"two"])
+        self.assertEqual(len(set(res["files"])), 2)
+        self.assertEqual(sorted(read(f) for f in res["files"]), ["one", "two"])
+
+    def test_preexisting_symlink_is_not_followed(self):
+        os.makedirs(self.dest)
+        target = os.path.join(self.t.name, "victim.txt")
+        with open(target, "w") as f:
+            f.write("intact")
+        os.symlink(target, os.path.join(self.dest, "f.txt"))
+        res = self.download(["/files/a/f.txt"], [b"payload"])
+        self.assertEqual(read(target), "intact")
+        self.assertEqual(read(res["files"][0]), "payload")
+        self.assertFalse(os.path.islink(res["files"][0]))
+
+    def test_challenge_json_symlink_is_not_followed(self):
+        os.makedirs(self.dest)
+        target = os.path.join(self.t.name, "victim.txt")
+        with open(target, "w") as f:
+            f.write("intact")
+        os.symlink(target, os.path.join(self.dest, "challenge.json"))
+        with self.assertRaises(OSError):
+            self.download([], [])
+        self.assertEqual(read(target), "intact")
+
+    def test_read_text_tolerates_non_utf8_bytes(self):
+        non_utf8 = os.path.join(self.t.name, "bad.txt")
+        with open(non_utf8, "wb") as f:
+            f.write(b"header\xff\xfe\xfafooter")
+        text = sc.read_text(non_utf8)
+        self.assertIn("header", text)
+        self.assertIn("footer", text)
+
+
 class CliSetupTest(unittest.TestCase):
     """cmd_setup de bout en bout, API simulée, vault et challenge jetables."""
 
@@ -293,6 +351,22 @@ class CliSetupTest(unittest.TestCase):
         self.ctf_cli.cmd_setup(self.args())
         with self.assertRaises(SystemExit):
             self.ctf_cli.cmd_setup(self.args())
+
+    def test_rerun_after_failure_keeps_single_setup_block(self):
+        notes_path = os.path.join(self.cdir, "notes.md")
+        with open(notes_path, "w") as f:
+            f.write("notes de l'orchestrateur\n")
+        self.ctf_cli.cmd_setup(self.args())
+        shutil.rmtree(os.path.join(self.vault, "HackTheBox"))  # simule un échec avant la fiche
+        self.ctf_cli.cmd_setup(self.args())
+        self.assertEqual(read(notes_path).count("## Setup"), 1)
+
+    def test_rerun_on_fresh_notes_does_not_duplicate_block(self):
+        notes_path = os.path.join(self.cdir, "notes.md")
+        self.ctf_cli.cmd_setup(self.args())
+        shutil.rmtree(os.path.join(self.vault, "HackTheBox"))
+        self.ctf_cli.cmd_setup(self.args())
+        self.assertEqual(read(notes_path).count("Plateforme : htb"), 1)
 
     def test_sheet_status_command(self):
         self.ctf_cli.cmd_setup(self.args())

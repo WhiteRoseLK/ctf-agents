@@ -48,7 +48,8 @@ Tests : `python3 -m unittest discover -s tools/ctf-cli/tests`.
 Lancé par `/ctf-start` : récupère par l'API nom, catégorie plateforme, type, difficulté, description, fichiers et
 infos de connexion, crée la **fiche writeup « en cours »** au bon endroit du vault (`status: en-cours`, tag
 `#en-cours`), remplit `notes.md` et télécharge les sources dans `work/`. Aucune instance n'est lancée, une fiche
-existante n'est jamais écrasée.
+existante n'est jamais écrasée. Les téléchargements CTFd ne suivent jamais de lien symbolique et un fichier
+de même nom reçoit un suffixe (`f-1.zip`) au lieu d'écraser ; relancer `setup` n'ajoute pas un second bloc à `notes.md`.
 
 ```bash
 python3 ~/.claude/ctf/ctf_cli.py setup --id <id> --name <nom> --challenge-dir challenges/<nom> [--event <E> --year <AAAA>]
